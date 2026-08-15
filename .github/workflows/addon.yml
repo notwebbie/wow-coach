@@ -1,0 +1,23 @@
+name: Addon
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua 5.1
+        run: sudo apt-get update && sudo apt-get install -y lua5.1
+      - run: ./scripts/validate-addon.sh
+      - run: ./scripts/package-addon.sh ci
+      - name: Inspect archive
+        run: |
+          unzip -Z1 dist/WoWCoachCollector-ci.zip | tee /tmp/addon-files.txt
+          diff -u <(printf '%s\n' WoWCoachCollector/ WoWCoachCollector/WoWCoachCollector.lua WoWCoachCollector/WoWCoachCollector.toc) <(sort /tmp/addon-files.txt)

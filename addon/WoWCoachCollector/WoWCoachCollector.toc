@@ -1,0 +1,10 @@
+## Interface: 20505
+## Title: WoW Coach Collector
+## Notes: Local-only character snapshots for WoW Coach.
+## Author: WoW Coach contributors
+## Version: 0.1.0
+## SavedVariables: WoWCoachCollectorDB
+## X-Category: Data Export
+## X-License: MIT
+
+WoWCoachCollector.lua

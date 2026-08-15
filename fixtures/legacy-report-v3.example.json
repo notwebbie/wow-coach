@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 3,
+  "generatedAt": "2026-01-02T03:04:05Z",
+  "appVersion": "1.2.0",
+  "installationFlavor": "_anniversary_",
+  "accounts": [
+    {
+      "account": "EXAMPLE-ACCOUNT",
+      "sourcePath": "/example/World of Warcraft/_anniversary_/WTF/Account/EXAMPLE-ACCOUNT/SavedVariables",
+      "addons": [],
+      "characters": [
+        {
+          "name": "Examplemage",
+          "realm": "Example Realm",
+          "faction": "Alliance",
+          "race": "Human",
+          "characterClass": "MAGE",
+          "level": 18,
+          "moneyCopper": 104800,
+          "zone": "Westfall",
+          "professions": [],
+          "talentPoints": {}
+        }
+      ],
+      "findings": []
+    }
+  ],
+  "warnings": [],
+  "coachingProfile": {
+    "primaryCharacter": "Examplemage",
+    "secondaryCharacter": null,
+    "bankOnlyCharacters": [],
+    "objective": "Prepare for Outland questing",
+    "targetDate": null
+  },
+  "progressSincePreviousReport": []
+}

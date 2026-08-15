@@ -1,0 +1,66 @@
+# Build output and dependencies
+/target/
+**/target/
+/node_modules/
+**/node_modules/
+/dist/
+**/dist/
+/build/
+**/.build/
+**/.swiftpm/
+desktop/src-tauri/gen/
+desktop/src-tauri/icons/*.png
+desktop/src-tauri/icons/*.icns
+desktop/src-tauri/icons/*.ico
+*.app
+*.exe
+*.dll
+*.dylib
+*.so
+*.dSYM/
+
+# WoW and user data
+WTF/
+**/WTF/
+SavedVariables/
+**/SavedVariables/
+WoWCoachCollectorDB.lua
+*.bak
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+*.report.json
+WoWCoachReport-*
+reports/
+**/reports/
+
+# Archives and generated packages
+*.zip
+*.7z
+*.tar
+*.tar.gz
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+credentials/
+
+# IDE and OS
+.DS_Store
+.idea/
+.vscode/
+*.xcuserstate
+xcuserdata/
+
+# Test and coverage output
+coverage/
+*.profraw
+*.lcov
