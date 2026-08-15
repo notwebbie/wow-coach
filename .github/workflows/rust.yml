@@ -36,8 +36,23 @@ jobs:
       - run: npm run build
 
   desktop-rust:
-    runs-on: macos-latest
+    name: Desktop Rust (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo check -p wow-coach-desktop
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+        working-directory: desktop
+      - name: Generate native icons from tracked SVG
+        run: npm run tauri icon src-tauri/icons/icon.svg
+        working-directory: desktop
+      - run: cargo check -p wow-coach-desktop --features desktop-runtime

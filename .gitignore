@@ -12,6 +12,8 @@ desktop/src-tauri/gen/
 desktop/src-tauri/icons/*.png
 desktop/src-tauri/icons/*.icns
 desktop/src-tauri/icons/*.ico
+desktop/src-tauri/icons/android/
+desktop/src-tauri/icons/ios/
 *.app
 *.exe
 *.dll

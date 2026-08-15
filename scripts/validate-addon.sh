@@ -5,9 +5,22 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 addon="$repo_root/addon/WoWCoachCollector"
 toc="$addon/WoWCoachCollector.toc"
 lua="$addon/WoWCoachCollector.lua"
+release_metadata="$repo_root/addon/release-metadata.env"
 
 test -f "$toc"
 test -f "$lua"
+test -f "$release_metadata"
+
+interface_line=$(grep '^anniversary_interface=' "$release_metadata")
+expected_interface=${interface_line#anniversary_interface=}
+case "$expected_interface" in
+    ''|*[!0-9]*)
+        echo "invalid anniversary_interface in release metadata" >&2
+        exit 1
+        ;;
+esac
+
+grep -qx "## Interface: $expected_interface" "$toc"
 grep -q '^## SavedVariables: WoWCoachCollectorDB$' "$toc"
 grep -q '^## Version:' "$toc"
 grep -q 'schemaVersion' "$lua"

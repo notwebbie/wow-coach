@@ -14,13 +14,13 @@ pub enum GameFlavor {
 }
 
 impl GameFlavor {
-    fn key(&self) -> &str {
+    fn storage_key_component(&self) -> String {
         match self {
-            Self::Anniversary => "anniversary",
-            Self::TbcClassic => "tbc_classic",
-            Self::ClassicEra => "classic_era",
-            Self::Retail => "retail",
-            Self::Other(value) => value,
+            Self::Anniversary => "builtin:anniversary".into(),
+            Self::TbcClassic => "builtin:tbc_classic".into(),
+            Self::ClassicEra => "builtin:classic_era".into(),
+            Self::Retail => "builtin:retail".into(),
+            Self::Other(value) => format!("custom:{}", normalize(value)),
         }
     }
 }
@@ -66,25 +66,37 @@ impl CharacterIdentity {
         }
     }
 
-    /// A length-prefixed tuple key. Length prefixes prevent delimiter collisions.
+    /// A canonical, length-prefixed tuple key.
+    ///
+    /// Canonicalization happens here as well as in the constructors so values
+    /// created through serde or public-field updates cannot produce alternate
+    /// keys solely from case or surrounding whitespace. Custom game flavors
+    /// use a separate namespace from built-in flavors.
+    ///
+    /// Normalization trims Unicode whitespace and applies Unicode lowercase,
+    /// but intentionally does not perform Unicode normalization or full case
+    /// folding. Visually equivalent strings with different Unicode code-point
+    /// sequences therefore remain distinct.
     pub fn storage_key(&self) -> String {
-        [
-            self.account.installation_id.as_str(),
-            self.account.account_id.as_str(),
-            self.game_flavor.key(),
-            self.region.as_str(),
-            self.realm.as_str(),
-            self.character_name.as_str(),
-        ]
-        .into_iter()
-        .map(|part| format!("{}:{}", part.len(), part))
-        .collect::<Vec<_>>()
-        .join("|")
+        let parts = [
+            normalize(&self.account.installation_id),
+            normalize(&self.account.account_id),
+            self.game_flavor.storage_key_component(),
+            normalize(&self.region),
+            normalize(&self.realm),
+            normalize(&self.character_name),
+        ];
+
+        parts
+            .into_iter()
+            .map(|part| format!("{}:{}", part.len(), part))
+            .collect::<Vec<_>>()
+            .join("|")
     }
 }
 
-fn normalize(value: String) -> String {
-    value.trim().to_lowercase()
+fn normalize(value: impl AsRef<str>) -> String {
+    value.as_ref().trim().to_lowercase()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
