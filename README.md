@@ -25,7 +25,7 @@ scripts/                       addon validation and packaging
 
 ## Develop
 
-Prerequisites: a current Rust toolchain, Node.js 20+, npm, and (for desktop system packages) the [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/).
+Prerequisites: a current Rust toolchain, Node.js 20+, npm, Lua 5.1 (for addon tests), and (for desktop system packages) the [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/).
 
 ```sh
 cargo test --workspace --all-targets

@@ -34,5 +34,16 @@ fi
 if command -v luac >/dev/null 2>&1; then
     luac -p "$lua"
 else
-    echo "warning: luac unavailable; static validation only" >&2
+    echo "warning: luac unavailable; skipping bytecode syntax validation" >&2
 fi
+
+if command -v lua5.1 >/dev/null 2>&1; then
+    lua_command=lua5.1
+elif command -v lua >/dev/null 2>&1; then
+    lua_command=lua
+else
+    echo "Lua interpreter is required to run addon tests" >&2
+    exit 1
+fi
+
+"$lua_command" "$repo_root/tests/addon_collector_test.lua" "$lua"

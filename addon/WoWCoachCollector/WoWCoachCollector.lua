@@ -66,7 +66,6 @@ frame:RegisterEvent("PLAYER_LEVEL_UP")
 frame:RegisterEvent("PLAYER_MONEY")
 frame:RegisterEvent("PLAYER_XP_UPDATE")
 frame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
-frame:RegisterEvent("PLAYER_LOGOUT")
 frame:SetScript("OnEvent", function(_, event, unit)
     if event ~= "PLAYER_XP_UPDATE" or unit == "player" then
         collectSnapshot()
