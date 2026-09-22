@@ -1,0 +1,10 @@
+## Interface: 16001
+## Title: WoW Coach Probe
+## Notes: Beta-only API diagnostic. Not shipped. Writes findings to SavedVariables.
+## Author: WoW Coach contributors
+## Version: 0.1.0
+## SavedVariables: WoWCoachProbeDB
+## X-Category: Development Tools
+## X-License: MIT
+
+WoWCoachProbe.lua
