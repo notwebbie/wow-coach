@@ -5,7 +5,7 @@ The React/TypeScript frontend, Tauri 2 Rust shell, SQL plugin setup, and first S
 Tauri's native context requires platform icon binaries. This baseline intentionally does not commit them. To launch locally:
 
 ```sh
-cd desktop
+cd apps/desktop
 npm ci
 npm run tauri icon src-tauri/icons/icon.svg
 npm run tauri dev -- --features desktop-runtime

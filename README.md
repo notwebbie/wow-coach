@@ -1,39 +1,69 @@
 # WoW Coach
 
-WoW Coach is an early, local-first companion for **World of Warcraft Anniversary / TBC Classic**. The project is being rebuilt as a public Mac + Windows desktop app, a shared Rust core, and a CurseForge-ready in-game collector addon.
+WoW Coach is a local-first coaching companion for **World of Warcraft
+Anniversary / TBC Classic**. An in-game addon records what your characters are
+doing; a shared Rust core turns that into progress history and plain-language
+recommendations; web and desktop clients present it. Your character data never
+leaves your machine.
 
-> This repository is a focused baseline, not a finished coaching product. It does not yet import the collector's SavedVariables into the desktop UI or generate recommendations.
+> Early development. The collector addon and the shared models exist; the parser,
+> coaching engine, and clients are being built in that order. Nothing here yet
+> produces recommendations.
 
-## What exists today
+## How it fits together
 
-- `wow-coach-core`: tested Rust models for account/flavor/realm/character identity, snapshots, history entries, and the legacy report schema-v3 import shape.
-- `desktop`: a minimal Tauri 2 + React/TypeScript shell with the first SQLite history migration.
-- `addon/WoWCoachCollector`: a local-only Lua collector with versioned SavedVariables and basic character fields.
-- `legacy/macos-swift-v1.2`: the supplied macOS Swift prototype, retained for reference with personal defaults and fixtures replaced by generic examples.
-- CI for Rust quality gates and addon validation/packaging.
+```text
+in-game addon  ──writes──▶  SavedVariables (versioned, project-owned schema)
+                                   │
+                            ┌──────┴───────┐
+                    file drop│              │file watch
+                             ▼              ▼
+                     apps/web (WASM)   apps/desktop (Tauri)
+                             └──────┬───────┘
+                                    ▼
+                          crates/wow-coach-core
+                    parser · models · coaching rules
+```
+
+The addon is the contract. The Rust core is written once and compiled both
+natively and to WebAssembly, so the web and desktop clients run identical parsing
+and identical coaching rules. Neither client re-implements a rule.
+
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) records why the project is shaped
+this way, including what was rejected.
 
 ## Repository layout
 
 ```text
-addon/WoWCoachCollector/       WoW addon source
-crates/wow-coach-core/         shared Rust models
-desktop/                       Tauri 2 and React shell
-fixtures/                      anonymized examples only
-legacy/macos-swift-v1.2/       sanitized legacy prototype
-scripts/                       addon validation and packaging
+addon/WoWCoachCollector/   the in-game collector — the data contract
+crates/wow-coach-core/     parser, models, coaching rules (native + wasm)
+apps/web/                  browser client
+apps/desktop/              Tauri 2 desktop client
+reference/swift-v1.4.2/    archived macOS prototype, kept as specification
+fixtures/                  anonymized examples only
+scripts/                   addon validation and packaging
+docs/                      architecture, privacy, disclaimer, roadmap
 ```
+
+`reference/swift-v1.4.2` is a working SwiftUI macOS prototype that reached the
+problem first. It is archived, not maintained: its value is the domain knowledge
+being ported into the core — DataStore bit layouts, TBC quest difficulty bands,
+rested-XP accrual, and a first pass at coaching heuristics.
 
 ## Develop
 
-Prerequisites: a current Rust toolchain, Node.js 20+, npm, Lua 5.1 (for addon tests), and (for desktop system packages) the [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/).
+Prerequisites: a current Rust toolchain, Node.js 20+, npm, Lua 5.1 for the addon
+tests, and the [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/)
+for the desktop client.
 
 ```sh
 cargo test --workspace --all-targets
 cargo clippy --workspace --all-targets -- -D warnings
-cd desktop && npm ci && npm run build
+cd apps/desktop && npm ci && npm run build
 ```
 
-The React shell and default Rust crate build without generated assets. Native Tauri launch is deliberately deferred because Tauri requires generated binary icon files, which this public baseline does not commit. Follow the exact local-only step in [`desktop/README.md`](desktop/README.md); generated icons remain ignored.
+Native Tauri launch needs generated binary icons, which are not committed. See
+[`apps/desktop/README.md`](apps/desktop/README.md) for the local-only step.
 
 Validate and package the addon:
 
@@ -43,22 +73,37 @@ Validate and package the addon:
 unzip -l dist/WoWCoachCollector-0.1.0.zip
 ```
 
-The generated ZIP contains one top-level `WoWCoachCollector` directory in CurseForge-compatible layout. Build output under `dist/` is intentionally ignored.
+The ZIP contains one top-level `WoWCoachCollector` directory in a
+CurseForge-compatible layout. Output under `dist/` is ignored.
 
-## Data flow and privacy
+## Privacy
 
-The addon writes only to WoW SavedVariables. It performs no network calls and no protected combat automation. The desktop direction is local file import into a local SQLite history database. No telemetry, cloud sync, account login, or upload path exists in this baseline.
+The addon writes only to SavedVariables. It makes no network calls and performs
+no protected combat automation. Parsing happens on your own machine in both
+clients — in the browser via WebAssembly, or locally in the desktop app. There is
+no telemetry, cloud sync, account login, or upload path.
 
-Character snapshots are still personal data. Do not commit SavedVariables, reports, databases, or real character fixtures. Read [Privacy](docs/PRIVACY.md) before sharing diagnostic material.
+Character snapshots are still personal data. Do not commit SavedVariables,
+reports, databases, or real character fixtures. Read
+[Privacy](docs/PRIVACY.md) before sharing diagnostic material.
 
-## Scope and roadmap
+## Scope
 
-Anniversary / TBC Classic is first. Retail and other game flavors may be modeled but are not a current product promise. See [Roadmap](docs/ROADMAP.md) for the deliberately staged plan.
+Anniversary / TBC Classic is first. Other game flavors may be modeled but are not
+a current promise. See [Roadmap](docs/ROADMAP.md).
+
+Out of scope, permanently: botting, protected combat automation, input
+broadcasting, reading game process memory, and uploading character data without a
+separate explicit action by the user.
 
 ## Disclaimer
 
-WoW Coach is an independent community project and is not affiliated with or endorsed by Blizzard Entertainment. World of Warcraft and Blizzard Entertainment are trademarks or registered trademarks of Blizzard Entertainment, Inc. See the full [Disclaimer](docs/DISCLAIMER.md).
+WoW Coach is an independent community project and is not affiliated with or
+endorsed by Blizzard Entertainment. World of Warcraft and Blizzard Entertainment
+are trademarks or registered trademarks of Blizzard Entertainment, Inc. See the
+full [Disclaimer](docs/DISCLAIMER.md).
 
 ## Contributing and security
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md). The project is licensed under the existing [MIT License](LICENSE).
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md). Licensed
+under the [MIT License](LICENSE).

@@ -29,8 +29,8 @@ final class AppModel: ObservableObject {
         primaryCharacter = defaults.string(forKey: "primaryCharacter") ?? "Examplemage"
         secondaryCharacter = defaults.string(forKey: "secondaryCharacter") ?? "Examplelock"
         bankOnlyCharacters = defaults.string(forKey: "bankOnlyCharacters") ?? "Examplebank"
-        progressionObjective = defaults.string(forKey: "progressionObjective") ?? "Reach level 70 and experience TBC endgame"
-        targetDate = defaults.string(forKey: "targetDate") ?? "December 2026"
+        progressionObjective = defaults.string(forKey: "progressionObjective") ?? "Prepare for Outland questing"
+        targetDate = defaults.string(forKey: "targetDate") ?? "Not set"
         rotationCharacters = defaults.string(forKey: "rotationCharacters") ?? "Examplemage, Examplelock, Examplepriest, Exampledruid"
         refresh()
     }

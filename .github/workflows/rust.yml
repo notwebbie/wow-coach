@@ -24,14 +24,14 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: desktop
+        working-directory: apps/desktop
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: desktop/package-lock.json
+          cache-dependency-path: apps/desktop/package-lock.json
       - run: npm ci
       - run: npm run build
 
@@ -49,10 +49,10 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: desktop/package-lock.json
+          cache-dependency-path: apps/desktop/package-lock.json
       - run: npm ci
-        working-directory: desktop
+        working-directory: apps/desktop
       - name: Generate native icons from tracked SVG
         run: npm run tauri icon src-tauri/icons/icon.svg
-        working-directory: desktop
+        working-directory: apps/desktop
       - run: cargo check -p wow-coach-desktop --features desktop-runtime

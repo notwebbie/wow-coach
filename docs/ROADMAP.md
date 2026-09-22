@@ -1,38 +1,59 @@
 # Roadmap
 
-This roadmap describes direction, not promised release dates.
+This roadmap describes direction and sequence, not promised release dates. The
+architecture it builds toward is recorded in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-## Baseline — complete in this repository
+## Phase 0 — Re-baseline · complete
 
-- Public monorepo boundaries and protective ignore rules.
-- Sanitized archival copy of the macOS Swift 1.2 prototype.
-- Collision-safe Rust identity plus snapshot/history models.
-- Legacy schema-v3 JSON import shape and anonymized fixture.
-- Tauri 2/React shell and SQLite snapshot-history migration.
-- Versioned, local-only Anniversary/TBC Classic addon collector.
-- Reproducible CurseForge-style ZIP packaging and CI checks.
+- Commit to a single architecture and record it as a decision document.
+- Restructure the repository to match: `apps/`, `crates/`, `addon/`, `reference/`.
+- Archive the SwiftUI prototype as reference material and remove its superseded
+  predecessor.
+- Remove personal character data from the working tree.
 
-## Next: local import slice
+## Phase 1 — The collector addon is the contract
 
-- Discover supported WoW installations on macOS and Windows.
-- Parse `WoWCoachCollectorDB` without evaluating arbitrary Lua.
-- Validate schema versions and surface actionable import errors.
-- Persist snapshots transactionally to SQLite.
-- Add fixture-based parser tests and migration tests.
+- Expand the collector beyond identity and XP to the full picture: bags and free
+  slots, quest log with difficulty, professions with ranks and caps, talent
+  spend, known recipes.
+- Capture through the WoW API rather than by reading other addons' saved data.
+- Emit a deliberately restricted Lua subset — table literals, strings and numbers
+  only — so the reader never has to evaluate anything.
+- Version the schema and treat it as public from first release.
+- Fixture-based tests shared with the parser.
 
-## Then: useful history
+## Phase 2 — Parse it, once, in Rust
 
-- Character selector and snapshot timeline.
-- Level, XP, currency, zone, and profession deltas.
-- ECharts visualizations after the import/history flow is proven.
-- Explicit local export with preview and redaction controls.
+- Parser for the collector's SavedVariables in `wow-coach-core`, accepting only
+  the restricted subset and rejecting everything else.
+- Accept every schema version the addon has ever shipped.
+- Actionable import errors: which file, which version, what to do.
+- Compile the core to both native and `wasm32` with the same test suite.
+- Persist snapshots transactionally to SQLite on the desktop side.
 
-## Later: coaching and distribution
+## Phase 3 — Coaching that earns the name
 
-- Transparent, rule-based Anniversary/TBC Classic suggestions.
-- Signed Mac and Windows releases.
-- CurseForge metadata, changelog automation, and release checks.
-- Broader game-flavor support only after the first path is reliable.
+- Port the prototype's heuristics into the core with tests: rested-XP accrual,
+  quest-log pressure, trainer and talent reminders, profession caps.
+- Build the rule engine those heuristics feed: what to do next session, which
+  character to play, what is blocking progress and why.
+- Every recommendation states its reasoning. No opaque scoring.
+- Transparent and rule-based — not a model, not a black box.
+
+## Phase 4 — Ship the web client
+
+- Drop a SavedVariables file onto the page; parsing happens in the browser.
+- Retain the directory handle where the File System Access API allows it, so
+  return visits re-read without re-picking.
+- Character selector, snapshot timeline, level/XP/currency/zone/profession deltas.
+- Local history in the browser. Explicit export with preview and redaction.
+
+## Phase 5 — Desktop client
+
+- Installation discovery on Windows and macOS.
+- Watch SavedVariables and diff in the background.
+- Signed and notarised releases once there are users to justify the cost.
+- CurseForge metadata, changelog automation, release checks.
 
 ## Explicitly out of scope
 
