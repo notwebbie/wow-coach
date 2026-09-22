@@ -31,6 +31,8 @@ and identical coaching rules. Neither client re-implements a rule.
 
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) records why the project is shaped
 this way, including what was rejected.
+[`docs/COLLECTOR-SCHEMA.md`](docs/COLLECTOR-SCHEMA.md) is the addon's data
+contract — the format every client reads.
 
 ## Repository layout
 

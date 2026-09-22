@@ -64,9 +64,10 @@ desktop, that is a bug in the build, not a difference in behaviour.
 
 The core never executes SavedVariables content. Because this project owns both
 the writer (the addon) and the reader (the core), the addon deliberately emits a
-restricted subset — table literals with string and number values only, no
-functions, no references, no exotic keys — and the parser accepts only that
-subset and rejects anything else.
+restricted subset — table literals holding strings, numbers and booleans only,
+no functions, no references, no cyclic structures, no exotic keys — and the
+parser accepts only that subset and rejects anything else. The subset is
+specified in `docs/COLLECTOR-SCHEMA.md`.
 
 ### 5. The SwiftUI prototype is reference, not product
 

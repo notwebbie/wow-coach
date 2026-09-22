@@ -1,0 +1,223 @@
+# Collector schema
+
+This is the contract between the in-game collector and everything that reads
+it. It is public from the moment anyone installs the addon, so it is versioned
+and changes additively.
+
+Current version: **2**.
+
+`fixtures/collector-v2.example.lua` is a complete, anonymised example generated
+by the addon's own test harness, and is what the parser is tested against.
+
+## Where the data lives
+
+```text
+<WoW>/<flavor>/WTF/Account/<ACCOUNT>/SavedVariables/WoWCoachCollector.lua
+```
+
+The addon writes only this file. The path supplies the installation and account
+identity; the file supplies everything else.
+
+## The restricted subset
+
+The reader parses this file. It never evaluates it. The writer is WoW's own
+SavedVariables serializer, and the collector only ever stores values it can
+emit safely, so a conforming file contains nothing but:
+
+- table constructors
+- string literals
+- number literals
+- the booleans `true` and `false`
+- `nil` (as an absent key, never as a stored value)
+
+No functions, no userdata, no cyclic references, no metatables, no computed
+keys. A parser that encounters anything else must reject the file rather than
+attempt recovery — a file outside the subset is a bug in the collector, not
+input to be salvaged.
+
+Keys are always explicit. The serializer writes string keys as `["name"]` and
+array entries as `[1]`, `[2]` — there are no bare positional values, so a reader
+does not need to track an implicit index. Key order is arbitrary and must not be
+relied on; `fixtures/collector-v2.example.lua` sorts its keys only so that it is
+reproducible.
+
+## Facts, not judgements
+
+The collector stores what the game reports. It does not store anything derived.
+
+Quest difficulty, rested-XP projection, "you should play this character next",
+bag pressure, and unspent-talent warnings are all rules, and rules live in
+`wow-coach-core` where they can be tested and changed without an addon update.
+A derived value written here would be frozen at capture time and would silently
+disagree with the core the moment a rule improved.
+
+The one exception is a value the game itself exposes only as a derived form,
+which is recorded as-is and marked as such.
+
+## Top level
+
+```lua
+WoWCoachCollectorDB = {
+    ["schemaVersion"] = 2,
+    ["characters"] = { ["<character key>"] = { ... } },
+}
+```
+
+### Character key
+
+```text
+<len>:<flavor>|<len>:<realm>|<len>:<name>
+```
+
+Length-prefixed so that a realm or character name containing the separator
+cannot forge a different key. The reader composes the full identity by
+combining this with the installation and account taken from the file path; the
+addon cannot see either.
+
+## Character record
+
+Every field is optional. An absent field means "not captured" — because the API
+was unavailable, or the client never reached the state that populates it. It
+never means zero or false. Readers must tolerate any field being missing,
+including on a record that previously had it.
+
+### Identity and client
+
+| Field | Type | Notes |
+|---|---|---|
+| `schemaVersion` | number | Version of this record, which may lag the top-level value |
+| `capturedAt` | number | Unix epoch seconds |
+| `gameFlavor` | string | `tbc_classic`, `classic_era`, `forever`, `retail`, `unknown` |
+| `interfaceVersion` | number | Raw TOC interface number from `GetBuildInfo` |
+| `realm`, `name` | string | |
+| `level` | number | |
+| `class`, `race` | string | Locale-independent file names (`MAGE`), not display names |
+| `classID`, `raceID` | number | |
+| `faction` | string | `Alliance` or `Horde` |
+
+`interfaceVersion` is stored raw and deliberately. `WOW_PROJECT_ID` no longer
+identifies the flavor — the WoW Forever client reports `WOW_PROJECT_MAINLINE`
+despite being vanilla-era content — so the interface number is the only
+reliable discriminator. Storing it raw means a reader can classify a flavor the
+collector predates without waiting for an addon release.
+
+### State and progress
+
+| Field | Type | Notes |
+|---|---|---|
+| `zone`, `subZone`, `bindLocation` | string | |
+| `isResting` | boolean | |
+| `xp`, `maxXP` | number | |
+| `restedXP` | number | `0` when not rested; absent when not captured |
+| `moneyCopper` | number | |
+
+### Skills
+
+```lua
+["skills"] = { { ["name"] = "Alchemy", ["rank"] = 225, ["maxRank"] = 300 }, ... },
+["skillsComplete"] = true,
+```
+
+Professions come from the Classic skill-line API, not retail's profession API,
+which does not exist on this client. Headers are excluded. `rank` is the raw
+value: the game also reports temporary points, which the default UI adds for
+display, but those are a transient buff and are not persisted.
+
+`skillsComplete` is `false` when a collapsed skill header hid lines from
+enumeration. The collector reports the gap rather than expanding the header,
+which would change the player's UI behind their back.
+
+### Talents
+
+```lua
+["talents"] = {
+    ["trees"] = { { ["name"] = "Fire", ["pointsSpent"] = 31 }, ... },
+    ["unspentPoints"] = 2,
+},
+```
+
+### Quests
+
+```lua
+["quests"] = {
+    {
+        ["questID"] = 9440,
+        ["title"] = "Cleansing the Waters",
+        ["level"] = 62,
+        ["header"] = "Hellfire Peninsula",
+        ["state"] = "complete",
+    }, ...
+},
+["questsComplete"] = true,
+```
+
+`state` is `active`, `complete`, or `failed`. The underlying API returns a
+signed number rather than a boolean; the sign is interpreted here because that
+is decoding, not judgement. Quest difficulty is not stored — it is a function of
+quest level against character level and belongs to the core.
+
+`questsComplete` is `false` when a collapsed header hid quests from
+enumeration, on the same principle as `skillsComplete`.
+
+### Inventory
+
+```lua
+["inventory"] = {
+    ["bags"] = { { ["bagIndex"] = 1, ["itemID"] = 4021, ["slots"] = 6, ["freeSlots"] = 5 }, ... },
+    ["totalSlots"] = 22,
+    ["freeSlots"] = 19,
+    ["contents"] = { { ["itemID"] = 2589, ["count"] = 32 }, ... },
+},
+```
+
+`contents` is a tally across every bag, so one item appears once with a summed
+count. It is an array of records rather than a map keyed by item ID, because a
+numeric map key serialises as a string and would force the reader to parse keys.
+
+Item names are deliberately not stored. They are locale-dependent, they bloat
+the file, and the API that resolves them is asynchronous and unreliable during
+logout. Readers resolve item IDs themselves.
+
+### Recipes
+
+```lua
+["recipes"] = {
+    ["Alchemy"] = {
+        ["capturedAt"] = 1700000000,
+        ["rank"] = 225,
+        ["maxRank"] = 300,
+        ["recipes"] = {
+            { ["name"] = "Elixir of Fortitude", ["difficulty"] = "optimal", ["spellID"] = 11452 },
+            ...
+        },
+    },
+},
+```
+
+Recipes are a **timestamped cache, not a live capture**, and this is a property
+of the game rather than a design choice. Trade skill and craft data is only
+readable while the relevant window is open, so the collector scrapes it when the
+player opens a profession and cannot refresh it on demand.
+
+Readers must therefore treat `recipes` as potentially stale, must compare its
+own `capturedAt` against the record's, and must not infer that a profession is
+unknown because it is absent. The Burning Crusade client keeps Enchanting on a
+separate older API from every other profession; both are captured, and both
+land in this same structure.
+
+`difficulty` is the game's own classification of the recipe relative to current
+skill (`optimal`, `medium`, `easy`, `trivial`). `spellID` is best-effort: it is
+parsed out of the recipe link where the client provides one, and absent
+otherwise.
+
+## Compatibility rules
+
+**The writer** may add fields within a version. It must not change the meaning
+or type of an existing field, or remove one, without incrementing
+`schemaVersion`.
+
+**The reader** must accept every version the collector has ever shipped, must
+ignore fields it does not recognise, and must treat any field as absent. A
+record whose `schemaVersion` is higher than the reader understands is read on a
+best-effort basis for the fields it does recognise, and flagged, not rejected —
+a player who updates the addon before the client should still see their data.

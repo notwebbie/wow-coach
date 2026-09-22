@@ -47,3 +47,19 @@ else
 fi
 
 "$lua_command" "$repo_root/tests/addon_collector_test.lua" "$lua"
+
+# The committed fixture is what the Rust parser is tested against, so it must
+# match what the collector actually writes today. Regenerate and compare.
+fixture="$repo_root/fixtures/collector-v2.example.lua"
+if [ -f "$fixture" ]; then
+    regenerated=$(mktemp)
+    trap 'rm -f "$regenerated"' EXIT
+    "$lua_command" "$repo_root/tests/addon_collector_test.lua" "$lua" "$regenerated" >/dev/null
+    if ! diff -u "$fixture" "$regenerated"; then
+        echo "fixture is stale: regenerate with" >&2
+        echo "  lua5.1 tests/addon_collector_test.lua \\" >&2
+        echo "    addon/WoWCoachCollector/WoWCoachCollector.lua \\" >&2
+        echo "    fixtures/collector-v2.example.lua" >&2
+        exit 1
+    fi
+fi
