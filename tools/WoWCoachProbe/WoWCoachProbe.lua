@@ -383,16 +383,25 @@ end
 --------------------------------------------------------------------------------
 
 local function sampleRested(reason)
+    -- `x and x() or nil` collapses a false or zero result to nil, which drops
+    -- the key entirely and makes "not rested" indistinguishable from "no such
+    -- API". The rested-rate fit needs the zeros and the falses, so each value
+    -- is captured with an explicit presence check.
+    local exhaustion, resting, restState
+    if GetXPExhaustion then exhaustion = GetXPExhaustion() or 0 end
+    if IsResting then resting = IsResting() and true or false end
+    if GetRestState then restState = GetRestState() end
+
     local store = db().restedSamples
     store[#store + 1] = {
         at = time(),
         reason = reason,
-        exhaustion = GetXPExhaustion and GetXPExhaustion() or nil,
+        exhaustion = exhaustion,
         xp = UnitXP and UnitXP("player") or nil,
         maxXP = UnitXPMax and UnitXPMax("player") or nil,
         level = UnitLevel and UnitLevel("player") or nil,
-        isResting = IsResting and IsResting() or nil,
-        restState = GetRestState and GetRestState() or nil,
+        isResting = resting,
+        restState = restState,
         zone = GetRealZoneText and GetRealZoneText() or nil,
     }
 end
