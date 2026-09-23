@@ -223,6 +223,17 @@ local function probeTalents(results)
         if not exists("C_SpecializationInfo.GetCombatConfigIDForSpecGroup") then return nil end
         return tostring(C_SpecializationInfo.GetCombatConfigIDForSpecGroup(1))
     end)
+    probe(results, "talents.configInfo", function()
+        if not exists("C_Traits.GetConfigInfo") then return nil end
+        if not exists("C_SpecializationInfo.GetCombatConfigIDForSpecGroup") then return nil end
+        local configID = C_SpecializationInfo.GetCombatConfigIDForSpecGroup(1)
+        if not configID then return nil end
+        local info = C_Traits.GetConfigInfo(configID)
+        if not info then return "no config info for " .. tostring(configID) end
+        local trees = info.treeIDs and table.concat(info.treeIDs, ",") or "none"
+        return string.format("type=%s name=%s treeIDs=%s", tostring(info.type),
+            tostring(info.name), trees)
+    end)
     probe(results, "talents.activeConfigID", function()
         if not exists("C_ClassTalents.GetActiveConfigID") then return nil end
         return tostring(C_ClassTalents.GetActiveConfigID())
@@ -236,11 +247,20 @@ local function probeTalents(results)
         if not exists("C_Traits.GetGroupDisplayInfoByTreeID") then return nil end
         local configID = C_SpecializationInfo.GetCombatConfigIDForSpecGroup(1)
         if not configID then return nil end
-        local specID = exists("C_SpecializationInfo.GetSpecialization")
-            and C_SpecializationInfo.GetSpecialization() or nil
-        local treeID = specID and exists("C_ClassTalents.GetTraitTreeForSpec")
-            and C_ClassTalents.GetTraitTreeForSpec(specID) or nil
-        if not treeID then return "could not resolve treeID (specID=" .. tostring(specID) .. ")" end
+        -- Resolve the tree from the config, which carries its own treeIDs.
+        -- GetSpecialization returns a spec *index* here, and feeding that to
+        -- GetTraitTreeForSpec yields nothing.
+        local treeID
+        if exists("C_Traits.GetConfigInfo") then
+            local configInfo = C_Traits.GetConfigInfo(configID)
+            if configInfo and configInfo.treeIDs then treeID = configInfo.treeIDs[1] end
+        end
+        if not treeID and exists("C_ClassTalents.GetTraitTreeForSpec")
+            and exists("C_SpecializationInfo.GetSpecializationInfo") then
+            local specID = C_SpecializationInfo.GetSpecializationInfo(1)
+            treeID = specID and C_ClassTalents.GetTraitTreeForSpec(specID) or nil
+        end
+        if not treeID then return "could not resolve treeID from config " .. tostring(configID) end
         local displays = C_Traits.GetGroupDisplayInfoByTreeID(treeID)
         if not displays then return "no display info for tree " .. tostring(treeID) end
         local ids, names = {}, {}
@@ -461,8 +481,12 @@ local function probePets(results)
         return nil
     end)
     probe(results, "pet.loyalty", function()
-        if exists("C_PetInfo.GetPetLoyalty") then return tostring(C_PetInfo.GetPetLoyalty()) end
-        return nil
+        if not exists("C_PetInfo.GetPetLoyalty") then return nil end
+        -- Returns zero values, not nil, when no pet is out; capture into a
+        -- local first so tostring() always has an argument.
+        local loyalty = C_PetInfo.GetPetLoyalty()
+        if loyalty == nil then return "returned no value" end
+        return tostring(loyalty)
     end)
     probe(results, "pet.trainingPoints", function()
         if exists("C_PetInfo.GetPetTrainingPoints") then

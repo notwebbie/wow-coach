@@ -55,6 +55,7 @@ C_ClassTalents = {
   GetTraitTreeForSpec = function() return 900 end,
 }
 C_Traits = {
+  GetConfigInfo = function(id) return { type = 1, name = "Talents", treeIDs = { 900 } } end,
   GetGroupDisplayInfoByTreeID = function() return {
     { groupID = 1, displayName = "Arcane" }, { groupID = 2, displayName = "Fire" },
     { groupID = 3, displayName = "Frost" } } end,
