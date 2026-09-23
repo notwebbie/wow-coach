@@ -10,6 +10,7 @@
 --   /wcprobe auras      snapshot current player buffs (use at a campsite)
 --   /wcprobe recipes    snapshot recipe APIs (run with a profession OPEN, then CLOSED)
 --   /wcprobe legacy     dump the Legacy trait trees and hunt for Well Rested
+--   /wcprobe pets       hunter pet happiness, loyalty and training points
 --   /wcprobe report     print where the results are and how many samples exist
 
 local ADDON = ...
@@ -422,6 +423,62 @@ local function snapshotAuras(label)
 end
 
 --------------------------------------------------------------------------------
+-- 8b. Hunter pet
+--
+-- Happiness, loyalty and training points are Forever-only C_PetInfo functions
+-- that ALSO have TBC equivalents as bare globals. That makes them genuine
+-- shared-schema fields rather than a one-flavor curiosity, and no other class
+-- can exercise this path. Run on a hunter with a pet out.
+--------------------------------------------------------------------------------
+
+local function probePets(results)
+    probe(results, "pet.exists", function()
+        if not UnitExists then return nil end
+        return tostring(UnitExists("pet")) .. " name=" ..
+            tostring(UnitName and UnitName("pet") or "?")
+    end)
+    probe(results, "pet.namespace", function() return tostring(exists("C_PetInfo")) end)
+    probe(results, "pet.happiness", function()
+        if exists("C_PetInfo.GetPetHappiness") then
+            local happiness, damage, loyalty = C_PetInfo.GetPetHappiness()
+            return string.format("C_PetInfo happiness=%s damage=%s loyalty=%s",
+                tostring(happiness), tostring(damage), tostring(loyalty))
+        end
+        if GetPetHappiness then
+            local happiness, damage, loyalty = GetPetHappiness()
+            return string.format("global happiness=%s damage=%s loyalty=%s",
+                tostring(happiness), tostring(damage), tostring(loyalty))
+        end
+        return nil
+    end)
+    probe(results, "pet.loyalty", function()
+        if exists("C_PetInfo.GetPetLoyalty") then return tostring(C_PetInfo.GetPetLoyalty()) end
+        return nil
+    end)
+    probe(results, "pet.trainingPoints", function()
+        if exists("C_PetInfo.GetPetTrainingPoints") then
+            local spent, total = C_PetInfo.GetPetTrainingPoints()
+            return string.format("C_PetInfo spent=%s total=%s", tostring(spent), tostring(total))
+        end
+        if GetPetTrainingPoints then
+            local spent, total = GetPetTrainingPoints()
+            return string.format("global spent=%s total=%s", tostring(spent), tostring(total))
+        end
+        return nil
+    end)
+    probe(results, "pet.foodTypes", function()
+        if not exists("C_PetInfo.GetPetFoodTypes") then return nil end
+        local types = C_PetInfo.GetPetFoodTypes()
+        if type(types) ~= "table" then return "returned " .. type(types) end
+        return table.concat(types, ",")
+    end)
+    probe(results, "pet.stableSlots", function()
+        if not exists("C_StableInfo.GetNumStableSlots") then return nil end
+        return tostring(C_StableInfo.GetNumStableSlots())
+    end)
+end
+
+--------------------------------------------------------------------------------
 -- Run
 --------------------------------------------------------------------------------
 
@@ -441,6 +498,7 @@ local function runAll()
     probeSkills(results)
     probeTalents(results)
     probeLegacy(results, false)
+    probePets(results)
     probeRecipes(results, "runAll")
     sampleRested("runAll")
 
@@ -458,7 +516,7 @@ local function runAll()
     out(string.format("ran %d probes; full results in SavedVariables. Notable answers:", count))
     for _, key in ipairs({ "secret.type", "secret.concat", "secret.reload",
                            "ruleset.isActive.PvPRuleset", "skills.byID.defense95",
-                           "recipes.allRecipeIDs", "legacy.adventure" }) do
+                           "recipes.allRecipeIDs", "legacy.adventure", "pet.happiness" }) do
         local result = results[key]
         if result then
             out(string.format("  %s = %s", key, tostring(result.value or result.detail or result.status)))
@@ -495,6 +553,12 @@ SlashCmdList["WCPROBE"] = function(argument)
     elseif command == "legacy" then
         local results = {}
         probeLegacy(results, true)
+        for name, result in pairs(results) do
+            out(string.format("  %s = %s", name, tostring(result.value or result.detail or result.status)))
+        end
+    elseif command == "pets" then
+        local results = {}
+        probePets(results)
         for name, result in pairs(results) do
             out(string.format("  %s = %s", name, tostring(result.value or result.detail or result.status)))
         end
