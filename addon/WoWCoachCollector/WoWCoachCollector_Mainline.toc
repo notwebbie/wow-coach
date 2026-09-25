@@ -1,4 +1,4 @@
-## Interface: 20506
+## Interface: 16001
 ## Title: WoW Coach Collector
 ## Notes: Local-only character snapshots for WoW Coach. Schema v2, Classic and Forever.
 ## Author: WoW Coach contributors

@@ -20,4 +20,4 @@ jobs:
       - name: Inspect archive
         run: |
           unzip -Z1 dist/WoWCoachCollector-ci.zip | tee /tmp/addon-files.txt
-          diff -u <(printf '%s\n' WoWCoachCollector/ WoWCoachCollector/WoWCoachCollector.lua WoWCoachCollector/WoWCoachCollector.toc) <(sort /tmp/addon-files.txt)
+          diff -u <(printf '%s\n' WoWCoachCollector/ WoWCoachCollector/WoWCoachCollector.lua WoWCoachCollector/WoWCoachCollector.toc WoWCoachCollector/WoWCoachCollector_Mainline.toc | sort) <(sort /tmp/addon-files.txt)

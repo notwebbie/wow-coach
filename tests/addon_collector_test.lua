@@ -33,6 +33,7 @@ local world = {
     now = 1700000000,
     quest_header_collapsed = false,
     skill_header_expanded = true,
+    petName = nil,
 }
 
 WOW_PROJECT_ID = 5
@@ -40,7 +41,12 @@ WOW_PROJECT_CLASSIC = 2
 WOW_PROJECT_BURNING_CRUSADE_CLASSIC = 5
 WOW_PROJECT_MAINLINE = 1
 
-function UnitName(unit) assert(unit == "player") return world.name end
+function UnitName(unit)
+    if unit == "pet" then return world.petName end
+    assert(unit == "player")
+    return world.name
+end
+function UnitExists(unit) return unit == "pet" and world.petName ~= nil or false end
 function GetRealmName() return world.realm end
 function UnitClass(unit) assert(unit == "player") return "Mage", "MAGE", 8 end
 function UnitRace(unit) assert(unit == "player") return "Human", "Human", 1 end
@@ -187,6 +193,15 @@ check(collector.gameFlavor(120100) == "retail", "120100 should be retail")
 -- WoW Forever reports WOW_PROJECT_MAINLINE, so only the interface number can
 -- tell it apart from retail. 16001 must not fall through to classic_era.
 check(collector.gameFlavor(16001) == "forever", "16001 should be forever, not classic_era")
+-- The sentinel outranks the interface number: Forever reports MAINLINE, and its
+-- interface number changes with every patch, so an unseen number must still
+-- resolve correctly when the Forever-only namespace is present.
+WOW_PROJECT_ID = 1
+check(collector.gameFlavor(16099, true) == "forever",
+    "an unseen interface number with C_SkillInfo present should be forever")
+check(collector.gameFlavor(120100, false) == "retail",
+    "MAINLINE without C_SkillInfo is retail")
+WOW_PROJECT_ID = 5
 
 --------------------------------------------------------------------------------
 -- Login snapshot
