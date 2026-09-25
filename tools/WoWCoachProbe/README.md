@@ -22,8 +22,11 @@ to store IDs only. Nothing short of trying it will tell us.
 
 ## Install
 
-1. Copy the `WoWCoachProbe` folder into your Forever install:
-   `<WoW>/_forever_/Interface/AddOns/WoWCoachProbe`
+1. Copy the `WoWCoachProbe` folder into your Forever install's AddOns folder.
+   The beta installs under the Battle.net client's own flavor directory, which
+   is **`_classic_beta_`** — not `_forever_`, whatever the launcher calls it.
+   Check with `ls "<WoW>"` if unsure:
+   `<WoW>/_classic_beta_/Interface/AddOns/WoWCoachProbe`
    The folder must contain `WoWCoachProbe.toc` and `WoWCoachProbe.lua` directly.
 2. At the character select screen, click **AddOns** and make sure it is enabled.
    Tick **Load out of date AddOns** if the beta has moved past interface 16001.
@@ -89,12 +92,22 @@ rate directly.
 
 ### 6. Rested XP — needs elapsed time, not effort
 
-- [ ] Log out (or park) in an inn or city for a few hours, then log in
-- [ ] Do this once with **Well Rested purchased** and once without, if you can
+**Start this first and let it run.** It is the only item that cannot be done in
+one sitting, and the only one whose value grows the earlier it begins.
 
-Sampling is automatic; you do not need to run anything. The addon logs
-exhaustion against wall-clock time on every change, and the accrual rate gets
-fitted from that offline. This is the only way to get the real number.
+- [ ] Walk into an inn or a capital city, then log out there
+- [ ] Log back in whenever — hours later is better than minutes
+- [ ] Repeat across a few days. More gaps of different lengths beats one long one
+- [ ] Do it once with **Well Rested purchased** and once without, if you can
+
+Sampling is automatic; you do not need to run anything. The addon records
+exhaustion at login, at logout, whenever it changes, and on a five-minute
+heartbeat, and the accrual rate is fitted from that offline.
+
+The logout sample is the important one. Rest accrues while you are *not*
+playing, so the measurement is the pair of readings either side of a logout —
+which is why it matters that you log out **inside** the inn rather than walking
+out first.
 
 ### 7. Camping
 
@@ -109,7 +122,7 @@ only handle, so the two snapshots get diffed to find its spell ID.
 The file is at:
 
 ```text
-<WoW>/_forever_/WTF/Account/<YOUR ACCOUNT>/SavedVariables/WoWCoachProbe.lua
+<WoW>/_classic_beta_/WTF/Account/<YOUR ACCOUNT>/SavedVariables/WoWCoachProbe.lua
 ```
 
 Send that file. `/wcprobe report` prints how many runs and samples it holds if

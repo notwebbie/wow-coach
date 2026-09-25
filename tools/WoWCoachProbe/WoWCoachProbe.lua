@@ -402,6 +402,18 @@ end
 -- rate is fitted offline.
 --------------------------------------------------------------------------------
 
+-- Samples are appended for the life of the beta, so a cap keeps a runaway
+-- event from filling the file. It refuses new samples rather than discarding
+-- old ones: the rate is fitted from a continuous series, and a hole punched in
+-- the middle of it is worse than a series that stops.
+local MAX_RESTED_SAMPLES = 20000
+
+-- While parked, `UPDATE_EXHAUSTION` is the only thing that fires, and it does
+-- so only when the value moves. A heartbeat gives the fit a known-good time
+-- base even across a long quiet session, and proves the addon was still
+-- running rather than having silently stopped.
+local HEARTBEAT_SECONDS = 300
+
 local function sampleRested(reason)
     -- `x and x() or nil` collapses a false or zero result to nil, which drops
     -- the key entirely and makes "not rested" indistinguishable from "no such
@@ -413,6 +425,9 @@ local function sampleRested(reason)
     if GetRestState then restState = GetRestState() end
 
     local store = db().restedSamples
+    if #store >= MAX_RESTED_SAMPLES then
+        return
+    end
     store[#store + 1] = {
         at = time(),
         reason = reason,
@@ -563,9 +578,22 @@ frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("UPDATE_EXHAUSTION")
 frame:RegisterEvent("PLAYER_UPDATE_RESTING")
 frame:RegisterEvent("PLAYER_XP_UPDATE")
+-- Rest accrues while logged out, so the measurement that matters is the pair
+-- either side of a logout. Without a sample taken *at* logout the elapsed time
+-- is measured from whenever an event last happened to fire, which can be hours
+-- early and silently ruins the rate. This fires on quitting the game too.
+frame:RegisterEvent("PLAYER_LOGOUT")
 frame:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_LOGIN" then
         sampleRested("login")
+        -- Keep a time base across a long quiet session. `C_Timer` is absent on
+        -- old clients, so a missing ticker costs the heartbeat and nothing
+        -- else — the event samples still land.
+        if C_Timer and C_Timer.NewTicker then
+            C_Timer.NewTicker(HEARTBEAT_SECONDS, function()
+                sampleRested("heartbeat")
+            end)
+        end
         out("loaded. Run |cffffff00/wcprobe|r. Rested XP is being sampled automatically.")
         return
     end
