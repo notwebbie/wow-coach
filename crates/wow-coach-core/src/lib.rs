@@ -1,6 +1,8 @@
+pub mod auctionator;
 pub mod classify;
 pub mod coaching;
 pub mod collector;
+pub mod economy;
 pub mod gap;
 pub mod history;
 pub mod lua;

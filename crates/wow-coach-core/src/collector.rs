@@ -209,6 +209,9 @@ pub struct ItemStack {
     #[serde(rename = "itemID")]
     pub item_id: Option<u32>,
     pub count: Option<u32>,
+    /// Absent when the client had not loaded the item yet. The collector does
+    /// not wait for it, so this is a convenience and the id is the fact.
+    pub name: Option<String>,
 }
 
 /// Forever replaces realms with rulesets. Normal is the absence of all three,

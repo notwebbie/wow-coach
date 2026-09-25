@@ -102,6 +102,24 @@ local function containerItem(bag, slot)
     return nil
 end
 
+-- The item's name, so a reader has something better to show than a number.
+--
+-- This is a cache lookup, not a request. `GetItemInfo` returns nothing for an
+-- item the client has not loaded yet, and we neither wait for it nor ask the
+-- server: a capture that blocks is a capture that sometimes never happens. The
+-- ID is the fact and the name is a convenience, so a missing name is recorded
+-- as missing, exactly like every other field in this schema.
+local function itemName(itemID)
+    local name
+    if has("C_Item.GetItemInfo") then
+        name = C_Item.GetItemInfo(itemID)
+    elseif GetItemInfo then
+        name = GetItemInfo(itemID)
+    end
+    if type(name) == "string" and name ~= "" then return name end
+    return nil
+end
+
 local function bagItemID(bag)
     if bag == 0 then return nil end
     local inventorySlot
@@ -138,7 +156,7 @@ local function captureBags()
 
     local contents = {}
     for itemID, count in pairs(items) do
-        contents[#contents + 1] = { itemID = itemID, count = count }
+        contents[#contents + 1] = { itemID = itemID, count = count, name = itemName(itemID) }
     end
     table.sort(contents, function(a, b) return a.itemID < b.itemID end)
 

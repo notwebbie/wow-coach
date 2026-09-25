@@ -12,14 +12,21 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use wow_coach_core::auctionator::{self, PriceDb};
 use wow_coach_core::classify::{self, Confidence};
 use wow_coach_core::coaching::{self, Rested};
 use wow_coach_core::collector::{self, CharacterRecord};
+use wow_coach_core::economy;
 use wow_coach_core::gap::{self, KnownCharacter};
 use wow_coach_core::history::{self, History, Snapshot, XpGain};
 use wow_coach_core::roster::{self, Role, RosterConfig};
 
 const COLLECTOR_FILE: &str = "WoWCoachCollector.lua";
+const AUCTIONATOR_FILE: &str = "Auctionator.lua";
+
+/// How many holdings to print before summarising. A roster can be sitting on
+/// hundreds of item types and a wall of them answers nothing.
+const DEFAULT_LIMIT: usize = 20;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -43,6 +50,7 @@ USAGE:
     wow-coach doctor
     wow-coach classify [--dry-run] [--file <path>] [--config <path>]
     wow-coach set-role <character> <active|bank|parked|unset> [--config <path>]
+    wow-coach economy [--all] [--prices <path>] [--file <path>] [--config <path>]
     wow-coach where
 
 `next` ranks your rotation by what is being lost: a character at the rested cap
@@ -55,6 +63,11 @@ overwrites each character on every login, so anything not recorded is lost.
 
 `classify` proposes a role for each character you have not decided about, shows
 the evidence, and asks. It never sets one on its own.
+
+`economy` shows what the whole roster makes and holds, valued against
+Auctionator's record of the last minimum buyout it saw. Every character counts
+here whatever its role — that is what marking a bank alt is for. Those values
+are before the auction house's cut and assume the stock would sell.
 
 `doctor` checks which supporting addons are installed.
 
@@ -70,6 +83,8 @@ fn run(args: &[String]) -> Result<(), String> {
     let mut config_path: Option<PathBuf> = None;
     let mut store_path: Option<PathBuf> = None;
     let mut dry_run = false;
+    let mut prices_path: Option<PathBuf> = None;
+    let mut show_all = false;
     let mut positional: Vec<&str> = Vec::new();
 
     let mut index = 0;
@@ -90,6 +105,13 @@ fn run(args: &[String]) -> Result<(), String> {
                 ));
             }
             "--dry-run" => dry_run = true,
+            "--all" => show_all = true,
+            "--prices" => {
+                index += 1;
+                prices_path = Some(PathBuf::from(
+                    args.get(index).ok_or("--prices needs a path")?,
+                ));
+            }
             "--config" => {
                 index += 1;
                 config_path = Some(PathBuf::from(
@@ -142,6 +164,12 @@ fn run(args: &[String]) -> Result<(), String> {
         }
         "classify" => classify_roles(file.as_deref(), &config_path, &store_path, dry_run),
         "history" => show_history(positional.first().copied(), file.as_deref(), &store_path),
+        "economy" => show_economy(
+            file.as_deref(),
+            prices_path.as_deref(),
+            &config_path,
+            if show_all { usize::MAX } else { DEFAULT_LIMIT },
+        ),
         "next" => show_next(file.as_deref(), &config_path),
         "roster" => show_roster(file.as_deref(), &config_path),
         other => Err(format!("unknown command {other}\n\n{}", usage())),
@@ -1151,4 +1179,293 @@ fn truncate(text: &str, width: usize) -> String {
         .take(width.saturating_sub(1))
         .collect::<String>()
         + "…"
+}
+
+/// Where Auctionator keeps its price database.
+///
+/// Account-level, not per character: the database is shared across every
+/// character on the account, which is exactly why it is worth reading. The
+/// per-character files beside it hold that character's own settings and no
+/// prices.
+fn discover_prices() -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    for root in install_roots() {
+        let Ok(flavors) = std::fs::read_dir(&root) else {
+            continue;
+        };
+        for flavor in flavors.flatten() {
+            if !flavor.file_name().to_string_lossy().starts_with('_') {
+                continue;
+            }
+            let Ok(accounts) = std::fs::read_dir(flavor.path().join("WTF/Account")) else {
+                continue;
+            };
+            for account in accounts.flatten() {
+                let candidate = account.path().join("SavedVariables").join(AUCTIONATOR_FILE);
+                if candidate.is_file() {
+                    found.push(candidate);
+                }
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
+/// Read every Auctionator database we were given or could find.
+///
+/// A file that will not parse costs its prices and nothing else: the rest of
+/// the economy view is still worth showing, and a hard failure here would mean
+/// one bad file hides the player's whole roster.
+fn load_prices(paths: Option<&Path>) -> (PriceDb, Vec<String>) {
+    let paths = match paths {
+        Some(path) => vec![path.to_path_buf()],
+        None => discover_prices(),
+    };
+    let mut db = PriceDb::default();
+    let mut problems = Vec::new();
+    for path in paths {
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                problems.push(format!("could not read {}: {error}", path.display()));
+                continue;
+            }
+        };
+        match auctionator::load(&bytes) {
+            Ok(loaded) => {
+                problems.extend(loaded.notes);
+                db.vendor.extend(loaded.vendor);
+                for (realm, prices) in loaded.realms {
+                    // Two accounts can both have scanned the same realm.
+                    // Whichever saw more items is the better database.
+                    match db.realms.entry(realm) {
+                        std::collections::btree_map::Entry::Vacant(slot) => {
+                            slot.insert(prices);
+                        }
+                        std::collections::btree_map::Entry::Occupied(mut slot) => {
+                            if prices.items.len() > slot.get().items.len() {
+                                slot.insert(prices);
+                            }
+                        }
+                    }
+                }
+            }
+            Err(error) => problems.push(format!("{}: {error}", path.display())),
+        }
+    }
+    (db, problems)
+}
+
+fn show_economy(
+    file: Option<&Path>,
+    prices_path: Option<&Path>,
+    config_path: &Path,
+    limit: usize,
+) -> Result<(), String> {
+    let (characters, notices, _) = gather(file)?;
+    if let Err(error) = record_history(&default_store_path(), &characters) {
+        eprintln!("warning: history not recorded: {error}");
+    }
+    let config = load_config(config_path);
+    let entries = roster::roster(&characters, &config);
+    let (prices, problems) = load_prices(prices_path);
+
+    let survey = economy::survey(&entries, &prices);
+
+    println!("PROFESSIONS");
+    if survey.professions.is_empty() {
+        println!(
+            "  None captured. Open each profession window once in game, then log out — \
+             the client only tells an addon about a trade skill it has been shown."
+        );
+    } else {
+        for holder in &survey.professions {
+            let rank = match (holder.rank, holder.max_rank) {
+                (Some(rank), Some(max)) => format!("{rank}/{max}"),
+                (Some(rank), None) => rank.to_string(),
+                _ => "—".to_string(),
+            };
+            let recipes = holder
+                .recipes_known
+                .filter(|known| *known > 0)
+                .map(|known| format!(", {known} recipes"))
+                .unwrap_or_default();
+            let note = if holder.needs_training() {
+                "  ← at its cap, needs a trainer"
+            } else {
+                ""
+            };
+            println!(
+                "  {:<16} {:<14} {:>9}{}{}",
+                holder.profession,
+                format!("{} ({})", holder.name, describe_role_short(holder.role)),
+                rank,
+                recipes,
+                note
+            );
+        }
+    }
+
+    println!();
+    println!("HOLDINGS");
+    if survey.holdings.is_empty() && survey.unpriced.is_empty() {
+        println!("  Nothing captured in anybody's bags.");
+    } else {
+        let markets: std::collections::BTreeSet<&str> = survey
+            .holdings
+            .iter()
+            .chain(&survey.unpriced)
+            .filter_map(|holding| holding.market.as_deref())
+            .collect();
+        let split = markets.len() > 1;
+        if split {
+            println!(
+                "  {:<26} {:<9} {:>7} {:>13} {:>12}  HELD BY",
+                "ITEM", "MARKET", "COUNT", "EACH", "VALUE"
+            );
+        } else {
+            println!(
+                "  {:<28} {:>7} {:>13} {:>12}  HELD BY",
+                "ITEM", "COUNT", "EACH", "VALUE"
+            );
+        }
+        for holding in survey.holdings.iter().take(limit) {
+            // A price nothing else supports is marked where it is read, not
+            // only in a note at the bottom that nobody reaches.
+            let each = if holding.price_looks_like_an_outlier() {
+                format!("{}?", money(holding.unit_price.unwrap_or(0)))
+            } else {
+                money(holding.unit_price.unwrap_or(0))
+            };
+            if split {
+                println!(
+                    "  {:<26} {:<9} {:>7} {:>13} {:>12}  {}",
+                    truncate(&item_label(holding), 26),
+                    market_tag(holding),
+                    holding.count,
+                    each,
+                    money(holding.value.unwrap_or(0)),
+                    truncate(&holders(holding), 34),
+                );
+            } else {
+                println!(
+                    "  {:<28} {:>7} {:>13} {:>12}  {}",
+                    truncate(&item_label(holding), 28),
+                    holding.count,
+                    each,
+                    money(holding.value.unwrap_or(0)),
+                    truncate(&holders(holding), 40),
+                );
+            }
+        }
+        if survey.holdings.len() > limit {
+            println!(
+                "  … and {} more priced item type(s); --all shows every one.",
+                survey.holdings.len() - limit
+            );
+        }
+    }
+
+    println!();
+    let (gold, silver, copper) = economy::coin(survey.gold_copper);
+    println!("Coin carried                {gold}g {silver}s {copper}c");
+    let (gold, silver, copper) = economy::coin(survey.holdings_value);
+    println!("Bags, at last seen buyout   {gold}g {silver}s {copper}c");
+    // The second total exists only because a flagged listing moved the first.
+    // With nothing flagged the two are equal, and printing both would imply a
+    // disagreement that is not there.
+    if survey.holdings_value_typical != survey.holdings_value {
+        let (gold, silver, copper) = economy::coin(survey.holdings_value_typical);
+        println!("Without those listings      {gold}g {silver}s {copper}c");
+    }
+
+    if !survey.unpriced.is_empty() {
+        println!();
+        println!("UNPRICED — held, but Auctionator has never seen it on the auction house");
+        for holding in survey.unpriced.iter().take(limit.min(10)) {
+            println!(
+                "  {:<28} {:>7}  {}",
+                truncate(&item_label(holding), 28),
+                holding.count,
+                truncate(&holders(holding), 40)
+            );
+        }
+        if survey.unpriced.len() > limit.min(10) {
+            println!("  … and {} more.", survey.unpriced.len() - limit.min(10));
+        }
+    }
+
+    if !survey.caveats.is_empty() {
+        println!();
+        for caveat in &survey.caveats {
+            println!("Note: {caveat}");
+        }
+    }
+    for problem in problems {
+        eprintln!("warning: {problem}");
+    }
+    for notice in notices {
+        eprintln!("note: {notice}");
+    }
+    if prices.realms.is_empty() {
+        if let Some(advice) = auctionator_advice(&check_addons()) {
+            println!();
+            println!("{advice}");
+        }
+    }
+    Ok(())
+}
+
+fn item_label(holding: &economy::Holding) -> String {
+    match &holding.name {
+        Some(name) => name.clone(),
+        None => format!("item {}", holding.item_id),
+    }
+}
+
+fn holders(holding: &economy::Holding) -> String {
+    holding
+        .held_by
+        .iter()
+        .map(|(name, count)| format!("{name} {count}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The faction half of a market key, for the column that only appears when the
+/// roster actually spans two auction houses. Printing "Dreamscythe Horde" on
+/// every row of a single-realm roster is noise; printing nothing when there
+/// are two markets is a lie by omission.
+fn market_tag(holding: &economy::Holding) -> String {
+    holding
+        .market
+        .as_deref()
+        .and_then(|market| {
+            market
+                .rsplit_once(' ')
+                .map(|(_, faction)| faction.to_string())
+        })
+        .unwrap_or_else(|| "?".to_string())
+}
+
+/// Copper as the game writes it, dropping the units that are zero so a column
+/// of prices stays readable.
+fn money(copper: u64) -> String {
+    let (gold, silver, copper) = economy::coin(copper);
+    if gold > 0 {
+        format!("{gold}g {silver}s")
+    } else if silver > 0 {
+        format!("{silver}s {copper}c")
+    } else {
+        format!("{copper}c")
+    }
+}
+
+fn describe_role_short(role: Role) -> &'static str {
+    match role {
+        Role::Active => "active",
+        Role::Bank => "bank",
+        Role::Parked => "parked",
+    }
 }

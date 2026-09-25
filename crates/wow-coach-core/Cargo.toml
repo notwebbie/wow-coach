@@ -9,5 +9,9 @@ rust-version.workspace = true
 
 [dependencies]
 chrono.workspace = true
+ciborium = { version = "0.2.2", default-features = false, features = ["std"] }
 serde.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+ciborium = { version = "0.2.2", default-features = false, features = ["std"] }

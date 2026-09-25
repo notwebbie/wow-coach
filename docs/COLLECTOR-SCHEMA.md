@@ -199,7 +199,7 @@ distinction that matters when reading them.
     ["bags"] = { { ["bagIndex"] = 1, ["itemID"] = 4021, ["slots"] = 6, ["freeSlots"] = 5 }, ... },
     ["totalSlots"] = 22,
     ["freeSlots"] = 19,
-    ["contents"] = { { ["itemID"] = 2589, ["count"] = 32 }, ... },
+    ["contents"] = { { ["itemID"] = 2589, ["count"] = 32, ["name"] = "Linen Cloth" }, ... },
 },
 ```
 
@@ -207,9 +207,19 @@ distinction that matters when reading them.
 count. It is an array of records rather than a map keyed by item ID, because a
 numeric map key serialises as a string and would force the reader to parse keys.
 
-Item names are deliberately not stored. They are locale-dependent, they bloat
-the file, and the API that resolves them is asynchronous and unreliable during
-logout. Readers resolve item IDs themselves.
+`itemID` is the fact and the join key; `name` is a convenience, and is often
+absent. Earlier versions of this schema stored no name at all, on the grounds
+that names are locale-dependent, that they bloat the file, and that the API
+resolving them is asynchronous and unreliable during logout. The first two
+still hold and the third is handled: the collector reads the client's item
+cache and never waits on it, so an item the client has not loaded is written
+without a name rather than delaying or failing the capture.
+
+What changed is that the reasoning assumed readers could resolve IDs
+themselves. They cannot — there is no bundled item database and the tool is
+expected to work offline, so a roster-wide holdings view had nothing to print
+but bare numbers. Never match on `name`: it differs by locale and by whether
+the client happened to have the item loaded.
 
 ### Recipes
 

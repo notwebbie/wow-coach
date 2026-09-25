@@ -60,19 +60,58 @@ time — then asks, because a bank alt and a character whose owner was away look
 identical from the outside. It never sets a role on its own, and never
 re-proposes one you have already decided.
 
+`set-role <name> unset` undoes a decision. Setting a character back to `active`
+is not the same thing: that is still a decision, and `classify` will leave it
+alone forever.
+
+## Professions and the economy
+
+```sh
+wow-coach economy           # who makes what, what the roster holds, what it is worth
+wow-coach economy --all     # every item, not just the top twenty
+```
+
+Every character counts here whatever its role — that is what marking a bank alt
+is *for*. It totals what the roster is sitting on, values it against
+Auctionator's price database, and says where each stack actually is.
+
+What the numbers are, and are not:
+
+- Prices are the **last minimum buyout Auctionator saw**, before the auction
+  house's cut, and they assume the stock would sell.
+- Horde and Alliance are **separate markets** and are never pooled. The same
+  item routinely differs by more than double between them.
+- An item Auctionator has never seen is listed as **unpriced**, not as
+  worthless.
+- A price wildly out of line with its own history is marked `?`. Usually that
+  means one person listed one item absurdly and it became "the price".
+- Only **bags** are counted. The collector cannot read a bank it has not been
+  standing in front of.
+
+Professions come from the recipe cache rather than the skill list, because the
+client's skill list also holds talent tabs, weapon skills, armour proficiencies
+and languages — all of which sit permanently at their cap and none of which a
+trainer helps with. The cost is that a profession whose window has never been
+opened in game does not appear. Open each one once and log out.
+
 ## Addons
 
 | Addon | | What it gives you |
 |---|---|---|
 | **WoWCoachCollector** | required | Your characters. Nothing works without it. It ships in this repository. |
-| **Auctionator** | optional | Auction prices, and therefore anything about what is worth crafting or selling. |
+| **Auctionator** | optional | Auction prices, and therefore `wow-coach economy` valuing anything. |
 
 Auctionator is the one outside addon this project leans on, and deliberately.
 Everywhere else, collecting the data ourselves beats reading another addon's
 saved state — that is the whole architecture. Auction prices are the exception:
 our own addon can only see scans you personally run, while Auctionator holds a
-price history built from every scan you have ever done. Without it the economy
-features are simply absent; nothing else is affected.
+price history built from every scan you have ever done. Without it `economy`
+still shows professions and what the roster holds — it just cannot put a number
+on any of it. Nothing else is affected.
+
+Auctionator stores that history as CBOR packed into a Lua string, so it is read
+at the byte level by a reader that does nothing else. It is decoded, never
+executed, exactly like every other file this project reads.
 
 `wow-coach doctor` reports which are installed, per game flavor, and says how to
 get Auctionator if it is missing.
