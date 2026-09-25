@@ -10,12 +10,12 @@ WoWCoachCollectorDB = {
 			["interfaceVersion"] = 20506,
 			["inventory"] = {
 				["bags"] = {
-					[1] = {
+					{
 						["bagIndex"] = 0,
 						["freeSlots"] = 14,
 						["slots"] = 16,
 					},
-					[2] = {
+					{
 						["bagIndex"] = 1,
 						["freeSlots"] = 5,
 						["itemID"] = 4020,
@@ -23,11 +23,11 @@ WoWCoachCollectorDB = {
 					},
 				},
 				["contents"] = {
-					[1] = {
+					{
 						["count"] = 32,
 						["itemID"] = 2589,
 					},
-					[2] = {
+					{
 						["count"] = 5,
 						["itemID"] = 2592,
 					},
@@ -41,14 +41,14 @@ WoWCoachCollectorDB = {
 			["moneyCopper"] = 222222,
 			["name"] = "Testhero",
 			["quests"] = {
-				[1] = {
+				{
 					["header"] = "Hellfire Peninsula",
 					["level"] = 62,
 					["questID"] = 9440,
 					["state"] = "complete",
 					["title"] = "Cleansing the Waters",
 				},
-				[2] = {
+				{
 					["header"] = "Hellfire Peninsula",
 					["level"] = 60,
 					["questID"] = 9441,
@@ -66,12 +66,12 @@ WoWCoachCollectorDB = {
 					["maxRank"] = 300,
 					["rank"] = 225,
 					["recipes"] = {
-						[1] = {
+						{
 							["difficulty"] = "optimal",
 							["name"] = "Elixir of Fortitude",
 							["spellID"] = 11452,
 						},
-						[2] = {
+						{
 							["difficulty"] = "trivial",
 							["name"] = "Healing Potion",
 							["spellID"] = 11453,
@@ -83,7 +83,7 @@ WoWCoachCollectorDB = {
 					["maxRank"] = 300,
 					["rank"] = 180,
 					["recipes"] = {
-						[1] = {
+						{
 							["difficulty"] = "easy",
 							["name"] = "Enchant Bracer - Minor Health",
 							["spellID"] = 7420,
@@ -94,12 +94,12 @@ WoWCoachCollectorDB = {
 			["restedXP"] = 900,
 			["schemaVersion"] = 2,
 			["skills"] = {
-				[1] = {
+				{
 					["maxRank"] = 300,
 					["name"] = "Alchemy",
 					["rank"] = 225,
 				},
-				[2] = {
+				{
 					["maxRank"] = 300,
 					["name"] = "Herbalism",
 					["rank"] = 150,
@@ -109,15 +109,15 @@ WoWCoachCollectorDB = {
 			["subZone"] = "Test Subzone",
 			["talents"] = {
 				["trees"] = {
-					[1] = {
+					{
 						["name"] = "Arcane",
 						["pointsSpent"] = 0,
 					},
-					[2] = {
+					{
 						["name"] = "Fire",
 						["pointsSpent"] = 31,
 					},
-					[3] = {
+					{
 						["name"] = "Frost",
 						["pointsSpent"] = 5,
 					},

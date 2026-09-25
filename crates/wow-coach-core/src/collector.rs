@@ -13,6 +13,7 @@
 
 use std::collections::BTreeMap;
 
+use serde::de::{self, Deserializer, SeqAccess, Visitor};
 use serde::{Deserialize, Serialize};
 
 use crate::lua::{self, LuaValue};
@@ -23,6 +24,58 @@ pub const KNOWN_SCHEMA_VERSION: u16 = 2;
 
 /// The global the addon writes.
 pub const SAVED_VARIABLE: &str = "WoWCoachCollectorDB";
+
+/// Accept an empty Lua table where a list is expected.
+///
+/// `{}` in Lua is genuinely ambiguous: it is both the empty list and the empty
+/// record, and nothing in the text says which. The converter has to pick one,
+/// and picks record — so a list field that happens to be empty, like the bag
+/// contents of a character whose bags are empty, arrives as `{}` rather than
+/// `[]`. That is not a malformed file and must not be read as one.
+///
+/// A non-empty map here is still an error: that would be a real shape mismatch.
+fn empty_table_as_list<'de, D, T>(deserializer: D) -> Result<Option<Vec<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    struct ListOrEmptyTable<T>(std::marker::PhantomData<T>);
+
+    impl<'de, T: Deserialize<'de>> Visitor<'de> for ListOrEmptyTable<T> {
+        type Value = Option<Vec<T>>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("a list, or an empty table")
+        }
+
+        fn visit_seq<A: SeqAccess<'de>>(self, mut access: A) -> Result<Self::Value, A::Error> {
+            let mut items = Vec::new();
+            while let Some(item) = access.next_element()? {
+                items.push(item);
+            }
+            Ok(Some(items))
+        }
+
+        fn visit_map<A: de::MapAccess<'de>>(self, mut access: A) -> Result<Self::Value, A::Error> {
+            if let Some((key, _)) = access.next_entry::<String, de::IgnoredAny>()? {
+                return Err(de::Error::custom(format!(
+                    "expected a list, found a table with keys (first: {key:?})"
+                )));
+            }
+            Ok(Some(Vec::new()))
+        }
+
+        fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+    }
+
+    deserializer.deserialize_any(ListOrEmptyTable(std::marker::PhantomData))
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
@@ -65,10 +118,12 @@ pub struct CharacterRecord {
     #[serde(rename = "restedXP")]
     pub rested_xp: Option<u64>,
 
+    #[serde(deserialize_with = "empty_table_as_list")]
     pub skills: Option<Vec<Skill>>,
     /// False when a collapsed header hid lines from enumeration.
     pub skills_complete: Option<bool>,
     pub talents: Option<Talents>,
+    #[serde(deserialize_with = "empty_table_as_list")]
     pub quests: Option<Vec<Quest>>,
     pub quests_complete: Option<bool>,
     pub inventory: Option<Inventory>,
@@ -91,6 +146,7 @@ pub struct Skill {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Talents {
+    #[serde(deserialize_with = "empty_table_as_list")]
     pub trees: Option<Vec<TalentTree>>,
     pub unspent_points: Option<u16>,
 }
@@ -129,9 +185,11 @@ pub struct Quest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Inventory {
+    #[serde(deserialize_with = "empty_table_as_list")]
     pub bags: Option<Vec<Bag>>,
     pub total_slots: Option<u32>,
     pub free_slots: Option<u32>,
+    #[serde(deserialize_with = "empty_table_as_list")]
     pub contents: Option<Vec<ItemStack>>,
 }
 
@@ -193,6 +251,7 @@ pub struct ProfessionRecipes {
     pub captured_at: Option<i64>,
     pub rank: Option<u16>,
     pub max_rank: Option<u16>,
+    #[serde(deserialize_with = "empty_table_as_list")]
     pub recipes: Option<Vec<Recipe>>,
 }
 

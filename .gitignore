@@ -66,3 +66,7 @@ xcuserdata/
 coverage/
 *.profraw
 *.lcov
+
+# Live captures used for debugging: real character data, never committed
+tools/samples/
+WoWCoachCollector.lua

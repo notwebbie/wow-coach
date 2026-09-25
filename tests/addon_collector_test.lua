@@ -399,8 +399,10 @@ local function serialize(value, indent)
 
     local pad, inner = string.rep("\t", indent), string.rep("\t", indent + 1)
     local parts = {}
+    -- WoW emits array entries as bare values, not as [1] = ..., so the
+    -- fixtures must look the same or they test a format nothing produces.
     for _, key in ipairs(numeric) do
-        parts[#parts + 1] = inner .. "[" .. key .. "] = " .. serialize(value[key], indent + 1) .. ","
+        parts[#parts + 1] = inner .. serialize(value[key], indent + 1) .. ","
     end
     for _, key in ipairs(strings) do
         parts[#parts + 1] = inner .. "[" .. string.format("%q", key) .. "] = " ..

@@ -10,12 +10,12 @@ WoWCoachCollectorDB = {
 			["interfaceVersion"] = 16001,
 			["inventory"] = {
 				["bags"] = {
-					[1] = {
+					{
 						["bagIndex"] = 0,
 						["freeSlots"] = 14,
 						["slots"] = 16,
 					},
-					[2] = {
+					{
 						["bagIndex"] = 1,
 						["freeSlots"] = 5,
 						["itemID"] = 4020,
@@ -23,11 +23,11 @@ WoWCoachCollectorDB = {
 					},
 				},
 				["contents"] = {
-					[1] = {
+					{
 						["count"] = 32,
 						["itemID"] = 2589,
 					},
-					[2] = {
+					{
 						["count"] = 5,
 						["itemID"] = 2592,
 					},
@@ -48,14 +48,14 @@ WoWCoachCollectorDB = {
 				["trainingPointsTotal"] = 100,
 			},
 			["quests"] = {
-				[1] = {
+				{
 					["header"] = "Durotar",
 					["level"] = 3,
 					["questID"] = 788,
 					["state"] = "complete",
 					["title"] = "Cutting Teeth",
 				},
-				[2] = {
+				{
 					["header"] = "Durotar",
 					["level"] = 4,
 					["questID"] = 795,
@@ -73,12 +73,12 @@ WoWCoachCollectorDB = {
 					["maxRank"] = 300,
 					["rank"] = 225,
 					["recipes"] = {
-						[1] = {
+						{
 							["difficulty"] = "optimal",
 							["name"] = "Minor Healing Potion",
 							["spellID"] = 2330,
 						},
-						[2] = {
+						{
 							["difficulty"] = "optimal",
 							["name"] = "Lesser Healing Potion",
 							["spellID"] = 2337,
@@ -95,13 +95,13 @@ WoWCoachCollectorDB = {
 			},
 			["schemaVersion"] = 2,
 			["skills"] = {
-				[1] = {
+				{
 					["maxRank"] = 300,
 					["name"] = "Alchemy",
 					["rank"] = 225,
 					["skillID"] = 171,
 				},
-				[2] = {
+				{
 					["maxRank"] = 300,
 					["name"] = "Herbalism",
 					["rank"] = 150,
@@ -112,15 +112,15 @@ WoWCoachCollectorDB = {
 			["subZone"] = "Valley of Trials",
 			["talents"] = {
 				["trees"] = {
-					[1] = {
+					{
 						["name"] = "Arcane",
 						["pointsSpent"] = 0,
 					},
-					[2] = {
+					{
 						["name"] = "Fire",
 						["pointsSpent"] = 21,
 					},
-					[3] = {
+					{
 						["name"] = "Frost",
 						["pointsSpent"] = 5,
 					},

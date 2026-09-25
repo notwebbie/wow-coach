@@ -313,3 +313,50 @@ if failures > 0 then
     os.exit(1)
 end
 print("forever collector tests passed")
+
+--------------------------------------------------------------------------------
+-- Fixture generation
+--
+-- With a second argument, dump the resulting database in the format WoW's own
+-- SavedVariables serializer uses, so the Rust parser in wow-coach-core can be
+-- tested against a realistic file without anyone having to play the game.
+-- Keys are sorted, which the real writer does not do, so the fixture is
+-- reproducible; readers must not depend on key order.
+--------------------------------------------------------------------------------
+
+local function serialize(value, indent)
+    local t = type(value)
+    if t == "number" or t == "boolean" then return tostring(value) end
+    if t == "string" then return string.format("%q", value) end
+    if t ~= "table" then error("value outside the restricted subset: " .. t) end
+
+    local numeric, strings = {}, {}
+    for key in pairs(value) do
+        if type(key) == "number" then numeric[#numeric + 1] = key
+        elseif type(key) == "string" then strings[#strings + 1] = key
+        else error("table key outside the restricted subset: " .. type(key)) end
+    end
+    table.sort(numeric)
+    table.sort(strings)
+
+    local pad, inner = string.rep("\t", indent), string.rep("\t", indent + 1)
+    local parts = {}
+    -- WoW emits array entries as bare values, not as [1] = ..., so the
+    -- fixtures must look the same or they test a format nothing produces.
+    for _, key in ipairs(numeric) do
+        parts[#parts + 1] = inner .. serialize(value[key], indent + 1) .. ","
+    end
+    for _, key in ipairs(strings) do
+        parts[#parts + 1] = inner .. "[" .. string.format("%q", key) .. "] = " ..
+            serialize(value[key], indent + 1) .. ","
+    end
+    if #parts == 0 then return "{\n" .. pad .. "}" end
+    return "{\n" .. table.concat(parts, "\n") .. "\n" .. pad .. "}"
+end
+
+if arg[2] then
+    local handle = assert(io.open(arg[2], "w"))
+    handle:write("WoWCoachCollectorDB = " .. serialize(WoWCoachCollectorDB, 0) .. "\n")
+    handle:close()
+    print("wrote fixture to " .. arg[2])
+end

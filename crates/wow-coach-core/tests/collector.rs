@@ -461,3 +461,77 @@ fn knowing_nothing_about_the_roster_reports_no_false_gap() {
     assert_eq!(result.captured.len(), 1);
     assert_eq!(result.total(), 1);
 }
+
+// ---------------------------------------------------------------------------
+// Shapes real files actually contain
+// ---------------------------------------------------------------------------
+
+#[test]
+fn an_empty_list_field_may_arrive_as_an_empty_table() {
+    // Lua's `{}` is both the empty list and the empty record, and nothing in
+    // the text distinguishes them. A character whose bags are empty writes
+    // `["contents"] = {}`, which is a perfectly good file. Found by the first
+    // real capture, which the fixtures had not covered.
+    let source = r#"
+        WoWCoachCollectorDB = {
+            ["schemaVersion"] = 2,
+            ["characters"] = {
+                ["k"] = {
+                    ["name"] = "Emptybags",
+                    ["inventory"] = { ["freeSlots"] = 70, ["contents"] = {}, ["bags"] = {} },
+                    ["skills"] = {},
+                    ["quests"] = {},
+                },
+            },
+        }
+    "#;
+    let loaded = collector::load(source).expect("an empty bag is not a broken file");
+    let record = loaded.db.characters.get("k").unwrap();
+    let inventory = record.inventory.as_ref().unwrap();
+    assert_eq!(inventory.contents.as_deref(), Some(&[][..]));
+    assert_eq!(record.skills.as_deref(), Some(&[][..]));
+    assert_eq!(record.quest_count(), Some(0));
+}
+
+#[test]
+fn a_populated_table_where_a_list_belongs_is_still_an_error() {
+    // Tolerating the empty case must not tolerate a genuine shape mismatch.
+    let source = r#"
+        WoWCoachCollectorDB = {
+            ["characters"] = { ["k"] = { ["skills"] = { ["Alchemy"] = 225 } } },
+        }
+    "#;
+    match collector::load(source) {
+        Err(LoadError::Shape(message)) => {
+            assert!(
+                message.contains("expected a list"),
+                "the error should say what was wrong: {message}"
+            );
+        }
+        other => panic!("expected a shape error, got {other:?}"),
+    }
+}
+
+#[test]
+fn reads_arrays_written_the_way_wow_writes_them() {
+    // WoW's serializer emits array entries as bare values, not `[1] = ...`.
+    // The fixtures were generated with explicit indices and so never exercised
+    // this until a real file did.
+    let source = r#"
+        WoWCoachCollectorDB = {
+            ["characters"] = {
+                ["k"] = {
+                    ["name"] = "Barearrays",
+                    ["skills"] = {
+                        { ["name"] = "Alchemy", ["rank"] = 225, ["maxRank"] = 300 },
+                        { ["name"] = "Herbalism", ["rank"] = 150, ["maxRank"] = 300 },
+                    },
+                },
+            },
+        }
+    "#;
+    let loaded = collector::load(source).expect("bare array entries are the normal case");
+    let skills = loaded.db.characters["k"].skills.as_ref().unwrap();
+    assert_eq!(skills.len(), 2);
+    assert_eq!(skills[1].name.as_deref(), Some("Herbalism"));
+}
