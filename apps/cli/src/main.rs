@@ -12,6 +12,7 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use wow_coach_core::coaching::{self, Rested};
 use wow_coach_core::collector::{self, CharacterRecord};
 use wow_coach_core::gap::{self, KnownCharacter};
 use wow_coach_core::roster::{self, Role, RosterConfig};
@@ -35,8 +36,16 @@ wow-coach — show your roster from the collector addon's saved data
 
 USAGE:
     wow-coach [roster] [--file <path>] [--config <path>]
+    wow-coach next [--file <path>] [--config <path>]
+    wow-coach doctor
     wow-coach set-role <character> <active|bank|parked> [--config <path>]
     wow-coach where
+
+`next` ranks your rotation by what is being lost: a character at the rested cap
+has stopped accruing, so every hour it stays parked is wasted, while one still
+filling is doing its job by being left alone.
+
+`doctor` checks which supporting addons are installed.
 
 Roles decide which rules apply to a character, not whether it is shown.
 A bank alt leaves the play rotation but keeps its professions, bags and gold.
@@ -106,6 +115,11 @@ fn run(args: &[String]) -> Result<(), String> {
                 .ok_or("which role? active, bank or parked")?;
             set_role(&config_path, file.as_deref(), name, role)
         }
+        "doctor" => {
+            doctor();
+            Ok(())
+        }
+        "next" => show_next(file.as_deref(), &config_path),
         "roster" => show_roster(file.as_deref(), &config_path),
         other => Err(format!("unknown command {other}\n\n{}", usage())),
     }
@@ -268,6 +282,123 @@ fn discover_accounts() -> Vec<PathBuf> {
     accounts
 }
 
+/// An addon we care about, and whether it is there.
+struct AddonStatus {
+    flavor: String,
+    name: &'static str,
+    installed: bool,
+    required: bool,
+    purpose: &'static str,
+}
+
+/// Auctionator is an optional dependency, and deliberately so.
+///
+/// Auction prices are the one thing better taken from an established addon
+/// than collected ourselves: our own addon can only see scans the player
+/// personally runs, whereas Auctionator holds a price history built from every
+/// scan they have ever done. Everywhere else in this project the reverse is
+/// true, which is why this is the only outside addon we lean on — and why its
+/// absence disables a feature rather than breaking the tool.
+fn check_addons() -> Vec<AddonStatus> {
+    let mut statuses = Vec::new();
+    for root in install_roots() {
+        let Ok(flavors) = std::fs::read_dir(&root) else {
+            continue;
+        };
+        for flavor in flavors.flatten() {
+            let flavor_name = flavor.file_name().to_string_lossy().into_owned();
+            if !flavor_name.starts_with('_') {
+                continue;
+            }
+            let addons = flavor.path().join("Interface/AddOns");
+            if !addons.is_dir() {
+                continue;
+            }
+            for (name, required, purpose) in [
+                (
+                    "WoWCoachCollector",
+                    true,
+                    "captures your characters; nothing works without it",
+                ),
+                (
+                    "Auctionator",
+                    false,
+                    "auction prices, for what is worth crafting and selling",
+                ),
+            ] {
+                statuses.push(AddonStatus {
+                    flavor: flavor_name.clone(),
+                    name,
+                    installed: addons.join(name).is_dir(),
+                    required,
+                    purpose,
+                });
+            }
+        }
+    }
+    statuses
+}
+
+fn auctionator_advice(statuses: &[AddonStatus]) -> Option<String> {
+    // Only worth mentioning for an install that has our collector: an install
+    // we do not read is none of our business.
+    let relevant: Vec<&AddonStatus> = statuses
+        .iter()
+        .filter(|status| {
+            status.name == "Auctionator"
+                && !status.installed
+                && statuses.iter().any(|other| {
+                    other.flavor == status.flavor
+                        && other.name == "WoWCoachCollector"
+                        && other.installed
+                })
+        })
+        .collect();
+    if relevant.is_empty() {
+        return None;
+    }
+    let flavors: Vec<&str> = relevant
+        .iter()
+        .map(|status| status.flavor.as_str())
+        .collect();
+    Some(format!(
+        "Auctionator is not installed ({}). It is optional, but without it there are \
+         no auction prices, so nothing can say what is worth crafting or selling. \
+         Install it from CurseForge or https://github.com/Auctionator/Auctionator.",
+        flavors.join(", ")
+    ))
+}
+
+fn doctor() {
+    let statuses = check_addons();
+    if statuses.is_empty() {
+        println!("No World of Warcraft installation found.");
+        return;
+    }
+    let mut flavor = String::new();
+    for status in &statuses {
+        if status.flavor != flavor {
+            flavor = status.flavor.clone();
+            println!("{flavor}");
+        }
+        println!(
+            "  [{}] {:<18} {} — {}",
+            if status.installed { "x" } else { " " },
+            status.name,
+            if status.required {
+                "required"
+            } else {
+                "optional"
+            },
+            status.purpose
+        );
+    }
+    if let Some(advice) = auctionator_advice(&statuses) {
+        println!();
+        println!("{advice}");
+    }
+}
+
 fn load_config(path: &Path) -> RosterConfig {
     // A missing config is the normal first run, not a problem.
     let Ok(text) = std::fs::read_to_string(path) else {
@@ -387,6 +518,104 @@ fn describe_role(role: Role) -> &'static str {
     }
 }
 
+/// Rank the rotation and say why.
+fn show_next(file: Option<&Path>, config_path: &Path) -> Result<(), String> {
+    let (characters, notices, read_paths) = gather(file)?;
+    let config = load_config(config_path);
+    let entries = roster::roster(&characters, &config);
+
+    let account_dirs: Vec<PathBuf> = read_paths
+        .iter()
+        .filter_map(|path| path.parent().and_then(Path::parent))
+        .map(Path::to_path_buf)
+        .collect();
+    let roster_gap = gap::find_gap(&known_characters(&account_dirs), &characters);
+    let advice = coaching::advise(&entries, roster_gap.is_complete());
+
+    match advice.play_next() {
+        Some(next) => {
+            // Only claim a recommendation when something is actually at stake.
+            // If every character is still banking rest, the honest answer is
+            // that nothing is urgent — saying "play this next" while the
+            // reason reads "leaving it parked is working" is incoherent.
+            match &next.rested {
+                Rested::AtCap { .. } | Rested::NearCap { .. } => {
+                    println!("Play {} next.", next.name);
+                }
+                Rested::Filling { .. } => {
+                    println!(
+                        "Nothing is urgent — every character is still banking rest.\n\
+                         If you want to play now, {} is closest to its cap and has the \
+                         most a session would clear.",
+                        next.name
+                    );
+                }
+                Rested::NotResting { .. } | Rested::Unknown { .. } => {
+                    println!("No ranking is possible from the rest data available.");
+                }
+            }
+            println!();
+            for reason in &next.reasons {
+                println!("  {reason}");
+            }
+            // A wall of bullets is not advice. Show what one session would
+            // most usefully clear, and say how many more there are.
+            const SHOWN: usize = 4;
+            for friction in next.frictions.iter().take(SHOWN) {
+                println!("  - {}", friction.summary);
+            }
+            if next.frictions.len() > SHOWN {
+                println!("  - and {} more", next.frictions.len() - SHOWN);
+            }
+        }
+        None => println!("Nothing to suggest: no character is both in the rotation and resting."),
+    }
+
+    if advice.play.len() > 1 {
+        println!();
+        println!("Then:");
+        for suggestion in advice.play.iter().skip(1) {
+            println!(
+                "  {:<14} {}",
+                suggestion.name,
+                match &suggestion.rested {
+                    Rested::AtCap { .. } => "at the rested cap".to_string(),
+                    Rested::NearCap { rested, cap } => format!("near the cap ({rested}/{cap})"),
+                    Rested::Filling { rested, cap } => format!("filling ({rested}/{cap})"),
+                    Rested::NotResting { .. } => "not resting".to_string(),
+                    Rested::Unknown { .. } => "cannot be ranked on rest".to_string(),
+                }
+            );
+        }
+    }
+
+    if !advice.park.is_empty() {
+        println!();
+        println!("Park these — they are accruing no rest where they are:");
+        for suggestion in &advice.park {
+            println!("  {}", suggestion.name);
+        }
+    }
+
+    if !advice.caveats.is_empty() {
+        println!();
+        for caveat in &advice.caveats {
+            println!("Note: {caveat}");
+        }
+    }
+    if let Some(summary) = roster_gap.summary() {
+        println!("{summary}");
+    }
+    if let Some(advice) = auctionator_advice(&check_addons()) {
+        println!();
+        println!("{advice}");
+    }
+    for notice in &notices {
+        println!("  - {notice}");
+    }
+    Ok(())
+}
+
 fn show_roster(file: Option<&Path>, config_path: &Path) -> Result<(), String> {
     let (characters, notices, read_paths) = gather(file)?;
     let config = load_config(config_path);
@@ -483,6 +712,16 @@ fn show_roster(file: Option<&Path>, config_path: &Path) -> Result<(), String> {
              perk changes both the rested cap and the rate it fills at, and nothing in the \
              game's API reports either. Measuring it is what the beta probe is for."
         );
+    }
+
+    if let Some(advice) = auctionator_advice(&check_addons()) {
+        println!();
+        println!("{advice}");
+    }
+
+    if !entries.is_empty() {
+        println!();
+        println!("Run `wow-coach next` for what to play and why.");
     }
 
     if !notices.is_empty() {

@@ -1,3 +1,4 @@
+pub mod coaching;
 pub mod collector;
 pub mod gap;
 pub mod lua;

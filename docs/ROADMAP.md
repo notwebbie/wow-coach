@@ -51,14 +51,20 @@ architecture it builds toward is recorded in [ARCHITECTURE.md](ARCHITECTURE.md).
   the tool for seeing what the core made of a file.
 - Still to come: SQLite history, and compiling the core to `wasm32`.
 
-## Phase 3 — Coaching that earns the name
+## Phase 3 — Coaching that earns the name · in progress
 
-- Port the prototype's heuristics into the core with tests: rested-XP accrual,
-  quest-log pressure, trainer and talent reminders, profession caps.
-- Build the rule engine those heuristics feed: what to do next session, which
-  character to play, what is blocking progress and why.
-- Every recommendation states its reasoning. No opaque scoring.
-- Transparent and rule-based — not a model, not a black box.
+- Ranks by what is being lost, not by whose turn it is: a character at the
+  rested cap has stopped accruing and wastes every parked hour, while one still
+  filling is doing its job by being left alone.
+- Every suggestion carries the arithmetic that produced it. A recommendation
+  that cannot show its numbers is indistinguishable from a guess.
+- Claims a recommendation only when something is at stake; when every character
+  is still banking rest it says so instead of dressing an order up as advice.
+- Ties break on what one session would clear: quest-log pressure, turn-ins,
+  unspent talent points, a profession at its cap.
+- Declines to rank on a rested model it does not have, which is the Forever case.
+- Says when it is ranking only part of the roster.
+- Still to come: quest planning, professions and economy.
 
 ## Phase 4 — Ship the web client
 

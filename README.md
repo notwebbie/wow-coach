@@ -34,6 +34,23 @@ this way, including what was rejected.
 [`docs/COLLECTOR-SCHEMA.md`](docs/COLLECTOR-SCHEMA.md) is the addon's data
 contract — the format every client reads.
 
+## Addons
+
+| Addon | | What it gives you |
+|---|---|---|
+| **WoWCoachCollector** | required | Your characters. Nothing works without it. It ships in this repository. |
+| **Auctionator** | optional | Auction prices, and therefore anything about what is worth crafting or selling. |
+
+Auctionator is the one outside addon this project leans on, and deliberately.
+Everywhere else, collecting the data ourselves beats reading another addon's
+saved state — that is the whole architecture. Auction prices are the exception:
+our own addon can only see scans you personally run, while Auctionator holds a
+price history built from every scan you have ever done. Without it the economy
+features are simply absent; nothing else is affected.
+
+`wow-coach doctor` reports which are installed, per game flavor, and says how to
+get Auctionator if it is missing.
+
 ## Repository layout
 
 ```text
