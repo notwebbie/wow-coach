@@ -36,14 +36,20 @@ architecture it builds toward is recorded in [ARCHITECTURE.md](ARCHITECTURE.md).
   is additive.
 - A test suite and fixture per client family, both checked in CI.
 
-## Phase 2 — Parse it, once, in Rust
+## Phase 2 — Parse it, once, in Rust · in progress
 
-- Parser for the collector's SavedVariables in `wow-coach-core`, accepting only
-  the restricted subset and rejecting everything else.
-- Accept every schema version the addon has ever shipped.
-- Actionable import errors: which file, which version, what to do.
-- Compile the core to both native and `wasm32` with the same test suite.
-- Persist snapshots transactionally to SQLite on the desktop side.
+- Restricted-subset Lua parser in `wow-coach-core`: reads data, never evaluates
+  it, and rejects anything outside the subset rather than recovering something
+  plausible from it.
+- Typed models for schema v2, where every field is optional because an absent
+  field means "not captured" and never zero or false.
+- A newer schema version is read for the fields it recognises and flagged,
+  never rejected — a player who updates the addon first still sees their data.
+- Character roles as user configuration: a bank alt leaves the play rotation
+  but keeps its professions, bags and gold, because that is what it is for.
+- `apps/cli` prints the roster from real saved data. First visible output, and
+  the tool for seeing what the core made of a file.
+- Still to come: SQLite history, and compiling the core to `wasm32`.
 
 ## Phase 3 — Coaching that earns the name
 

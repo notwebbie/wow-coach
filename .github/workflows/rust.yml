@@ -17,8 +17,8 @@ jobs:
         with:
           components: rustfmt, clippy
       - run: cargo fmt --all --check
-      - run: cargo test -p wow-coach-core --all-targets
-      - run: cargo clippy -p wow-coach-core --all-targets -- -D warnings
+      - run: cargo test -p wow-coach-core -p wow-coach-cli --all-targets
+      - run: cargo clippy -p wow-coach-core -p wow-coach-cli --all-targets -- -D warnings
 
   desktop-ui:
     runs-on: ubuntu-latest
