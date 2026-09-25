@@ -66,6 +66,19 @@ architecture it builds toward is recorded in [ARCHITECTURE.md](ARCHITECTURE.md).
 - Says when it is ranking only part of the roster.
 - Still to come: quest planning, professions and economy.
 
+## Progress history · in progress
+
+- The collector overwrites each character on every capture, so state that is
+  not recorded is lost for good. Recording happens automatically whenever the
+  tool sees a capture it has not stored, and deduplicates on capture time so
+  running it repeatedly is a no-op.
+- Append-only JSON lines rather than a database: no native dependency, and the
+  same code runs in the browser. A damaged line costs one snapshot, not the store.
+- A level-up is not read as losing all your XP; more than one level at once is
+  reported as a floor rather than an invented figure.
+- Surfaces the observation a snapshot cannot make: characters captured either
+  side of a period that gained nothing.
+
 ## Phase 4 — Ship the web client
 
 - Drop a SavedVariables file onto the page; parsing happens in the browser.

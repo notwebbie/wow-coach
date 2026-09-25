@@ -15,6 +15,7 @@ use std::process::ExitCode;
 use wow_coach_core::coaching::{self, Rested};
 use wow_coach_core::collector::{self, CharacterRecord};
 use wow_coach_core::gap::{self, KnownCharacter};
+use wow_coach_core::history::{self, History, Snapshot, XpGain};
 use wow_coach_core::roster::{self, Role, RosterConfig};
 
 const COLLECTOR_FILE: &str = "WoWCoachCollector.lua";
@@ -37,6 +38,7 @@ wow-coach — show your roster from the collector addon's saved data
 USAGE:
     wow-coach [roster] [--file <path>] [--config <path>]
     wow-coach next [--file <path>] [--config <path>]
+    wow-coach history [<character>] [--file <path>] [--store <path>]
     wow-coach doctor
     wow-coach set-role <character> <active|bank|parked> [--config <path>]
     wow-coach where
@@ -44,6 +46,10 @@ USAGE:
 `next` ranks your rotation by what is being lost: a character at the rested cap
 has stopped accruing, so every hour it stays parked is wasted, while one still
 filling is doing its job by being left alone.
+
+`history` shows what has changed over time. Snapshots are recorded
+automatically whenever this tool sees a capture it has not stored — the addon
+overwrites each character on every login, so anything not recorded is lost.
 
 `doctor` checks which supporting addons are installed.
 
@@ -57,6 +63,7 @@ fn run(args: &[String]) -> Result<(), String> {
     let mut command = "roster";
     let mut file: Option<PathBuf> = None;
     let mut config_path: Option<PathBuf> = None;
+    let mut store_path: Option<PathBuf> = None;
     let mut positional: Vec<&str> = Vec::new();
 
     let mut index = 0;
@@ -69,6 +76,12 @@ fn run(args: &[String]) -> Result<(), String> {
             "--file" => {
                 index += 1;
                 file = Some(PathBuf::from(args.get(index).ok_or("--file needs a path")?));
+            }
+            "--store" => {
+                index += 1;
+                store_path = Some(PathBuf::from(
+                    args.get(index).ok_or("--store needs a path")?,
+                ));
             }
             "--config" => {
                 index += 1;
@@ -84,6 +97,7 @@ fn run(args: &[String]) -> Result<(), String> {
     }
 
     let config_path = config_path.unwrap_or_else(default_config_path);
+    let store_path = store_path.unwrap_or_else(default_store_path);
 
     match command {
         "where" => {
@@ -119,6 +133,7 @@ fn run(args: &[String]) -> Result<(), String> {
             doctor();
             Ok(())
         }
+        "history" => show_history(positional.first().copied(), file.as_deref(), &store_path),
         "next" => show_next(file.as_deref(), &config_path),
         "roster" => show_roster(file.as_deref(), &config_path),
         other => Err(format!("unknown command {other}\n\n{}", usage())),
@@ -519,8 +534,229 @@ fn describe_role(role: Role) -> &'static str {
 }
 
 /// Rank the rotation and say why.
+fn default_store_path() -> PathBuf {
+    if let Some(home) = std::env::var_os("HOME") {
+        return PathBuf::from(home).join(".config/wow-coach/history.jsonl");
+    }
+    PathBuf::from("wow-coach-history.jsonl")
+}
+
+fn load_history(path: &Path) -> History {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return History::default();
+    };
+    let (history, problems) = history::parse_jsonl(&text);
+    for problem in problems {
+        eprintln!("warning: {problem}");
+    }
+    history
+}
+
+/// Record anything we have not seen before.
+///
+/// The addon overwrites each character's record on every capture, so a state
+/// not recorded here is gone for good. Recording happens automatically rather
+/// than on a command nobody would remember, and deduplication on capture time
+/// makes running the tool repeatedly a no-op.
+fn record_history(
+    path: &Path,
+    characters: &BTreeMap<String, CharacterRecord>,
+) -> Result<(History, usize), String> {
+    let mut store = load_history(path);
+    let mut fresh = Vec::new();
+    for (key, record) in characters {
+        let Some(snapshot) = Snapshot::from_record(key, record) else {
+            continue;
+        };
+        if store.record(snapshot.clone()) {
+            fresh.push(snapshot);
+        }
+    }
+    if fresh.is_empty() {
+        return Ok((store, 0));
+    }
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("could not create {}: {error}", parent.display()))?;
+    }
+    let mut appended = String::new();
+    for snapshot in &fresh {
+        appended.push_str(&history::to_jsonl_line(snapshot)?);
+        appended.push('\n');
+    }
+    use std::io::Write as _;
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|error| format!("could not open {}: {error}", path.display()))?;
+    file.write_all(appended.as_bytes())
+        .map_err(|error| format!("could not write {}: {error}", path.display()))?;
+    Ok((store, fresh.len()))
+}
+
+fn gold(copper: i64) -> String {
+    let sign = if copper < 0 { "-" } else { "" };
+    let copper = copper.unsigned_abs();
+    format!(
+        "{sign}{}g {}s {}c",
+        copper / 10_000,
+        (copper / 100) % 100,
+        copper % 100
+    )
+}
+
+fn when(epoch: i64) -> String {
+    // No date library here on purpose: days elapsed is what the reader wants,
+    // and it needs no timezone to be right.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs() as i64)
+        .unwrap_or(epoch);
+    let days = (now - epoch) / 86_400;
+    match days {
+        d if d <= 0 => "today".to_string(),
+        1 => "yesterday".to_string(),
+        d => format!("{d} days ago"),
+    }
+}
+
+fn describe_xp(gain: &XpGain) -> String {
+    match gain {
+        XpGain::Exact(0) => "no XP".to_string(),
+        XpGain::Exact(amount) => format!("{amount} XP"),
+        XpGain::AtLeast(amount) => format!("at least {amount} XP"),
+        XpGain::Unknown => "XP not known".to_string(),
+    }
+}
+
+fn show_history(name: Option<&str>, file: Option<&Path>, store_path: &Path) -> Result<(), String> {
+    let (characters, _, _) = gather(file)?;
+    let (store, added) = record_history(store_path, &characters)?;
+    if added > 0 {
+        println!("Recorded {added} new snapshot(s).");
+        println!();
+    }
+    if store.is_empty() {
+        println!("No history yet. It builds up as you play and run this.");
+        return Ok(());
+    }
+
+    if let Some(name) = name {
+        let key = store
+            .snapshots()
+            .iter()
+            .find(|snapshot| snapshot.name.eq_ignore_ascii_case(name))
+            .map(|snapshot| snapshot.key.clone())
+            .ok_or_else(|| format!("no history for {name}"))?;
+
+        let snapshots = store.for_character(&key);
+        println!("{} — {} snapshot(s)", snapshots[0].name, snapshots.len());
+        if snapshots.len() < 2 {
+            println!();
+            println!(
+                "  Only one capture so far, so there is nothing to compare it against yet. \
+                 Play, log out, and run this again."
+            );
+            return Ok(());
+        }
+        println!();
+        for pair in snapshots.windows(2) {
+            let change = history::delta(pair[0], pair[1]);
+            if change.is_idle() {
+                continue;
+            }
+            let mut parts = vec![describe_xp(&change.xp)];
+            if change.levels_gained != 0 {
+                parts.push(format!("{:+} level(s)", change.levels_gained));
+            }
+            if let Some(copper) = change.copper.filter(|copper| *copper != 0) {
+                parts.push(gold(copper));
+            }
+            for (skill, gained) in &change.skills {
+                parts.push(format!("{skill} {gained:+}"));
+            }
+            println!("  {:<14} {}", when(change.to), parts.join(", "));
+        }
+        if let Some(total) = history::total_delta(&store, &key) {
+            println!();
+            println!(
+                "  Total since {}: {}{}{}",
+                when(total.from),
+                describe_xp(&total.xp),
+                if total.levels_gained != 0 {
+                    format!(", {:+} level(s)", total.levels_gained)
+                } else {
+                    String::new()
+                },
+                total
+                    .copper
+                    .filter(|copper| *copper != 0)
+                    .map(|copper| format!(", {}", gold(copper)))
+                    .unwrap_or_default()
+            );
+        }
+        return Ok(());
+    }
+
+    println!(
+        "{:<14} {:>10} {:>18} CHANGE",
+        "CHARACTER", "SNAPSHOTS", "SINCE"
+    );
+    for (key, latest) in store.latest_per_character() {
+        let count = store.for_character(key).len();
+        match history::total_delta(&store, key) {
+            Some(total) => {
+                let mut parts = vec![describe_xp(&total.xp)];
+                if total.levels_gained != 0 {
+                    parts.push(format!("{:+} level(s)", total.levels_gained));
+                }
+                println!(
+                    "{:<14} {:>10} {:>18} {}",
+                    latest.name,
+                    count,
+                    when(total.from),
+                    parts.join(", ")
+                );
+            }
+            None => println!(
+                "{:<14} {:>10} {:>18} first capture — nothing to compare yet",
+                latest.name,
+                count,
+                when(latest.captured_at)
+            ),
+        }
+    }
+
+    // Two weeks with captures either side and nothing gained.
+    let fortnight = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs() as i64 - 14 * 86_400)
+        .unwrap_or(0);
+    let stalled = history::stalled(&store, fortnight);
+    if !stalled.is_empty() {
+        println!();
+        println!(
+            "Captured a fortnight ago and since, with nothing gained: {}",
+            stalled
+                .iter()
+                .map(|change| change.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    Ok(())
+}
+
+/// Rank the rotation and say why.
 fn show_next(file: Option<&Path>, config_path: &Path) -> Result<(), String> {
     let (characters, notices, read_paths) = gather(file)?;
+    // Record before anything else: the addon overwrites its file on every
+    // login, so a state we do not keep now is gone.
+    if let Err(error) = record_history(&default_store_path(), &characters) {
+        eprintln!("warning: history not recorded: {error}");
+    }
     let config = load_config(config_path);
     let entries = roster::roster(&characters, &config);
 
@@ -618,6 +854,11 @@ fn show_next(file: Option<&Path>, config_path: &Path) -> Result<(), String> {
 
 fn show_roster(file: Option<&Path>, config_path: &Path) -> Result<(), String> {
     let (characters, notices, read_paths) = gather(file)?;
+    // Record before anything else: the addon overwrites its file on every
+    // login, so a state we do not keep now is gone.
+    if let Err(error) = record_history(&default_store_path(), &characters) {
+        eprintln!("warning: history not recorded: {error}");
+    }
     let config = load_config(config_path);
     let mut entries = roster::roster(&characters, &config);
 

@@ -1,6 +1,7 @@
 pub mod coaching;
 pub mod collector;
 pub mod gap;
+pub mod history;
 pub mod lua;
 pub mod roster;
 
