@@ -191,3 +191,35 @@ fn every_suggestion_carries_its_evidence() {
         "a bare guess is worse than none"
     );
 }
+
+#[test]
+fn clearing_a_role_is_not_the_same_as_setting_it_active() {
+    // Setting a character back to `active` still counts as a decision, so
+    // suggestions stop for it forever. Undoing has to remove the entry.
+    let characters = characters(vec![record("Vault", 1, 0)]);
+    let history = idle_history("Vault");
+
+    let mut config = RosterConfig::default();
+    config.set_role("Vault", Role::Bank);
+    assert!(config.is_classified("Vault"));
+
+    // "Undo" by setting active: still classified, still silent.
+    config.set_role("Vault", Role::Active);
+    let entries = roster::roster(&characters, &config);
+    assert!(
+        classify::suggest_all(&entries, &config, &history, NOW).is_empty(),
+        "an explicit active is a decision and must stay silent"
+    );
+
+    // Properly undone: unclassified, and open to suggestions again.
+    assert!(config.clear_role("Vault"));
+    assert!(!config.is_classified("Vault"));
+    let entries = roster::roster(&characters, &config);
+    assert_eq!(
+        classify::suggest_all(&entries, &config, &history, NOW).len(),
+        1,
+        "clearing should make it suggestible again"
+    );
+
+    assert!(!config.clear_role("Vault"), "clearing twice is harmless");
+}

@@ -42,7 +42,7 @@ USAGE:
     wow-coach history [<character>] [--file <path>] [--store <path>]
     wow-coach doctor
     wow-coach classify [--dry-run] [--file <path>] [--config <path>]
-    wow-coach set-role <character> <active|bank|parked> [--config <path>]
+    wow-coach set-role <character> <active|bank|parked|unset> [--config <path>]
     wow-coach where
 
 `next` ranks your rotation by what is being lost: a character at the rested cap
@@ -510,11 +510,26 @@ fn gather(file: Option<&Path>) -> Result<Gathered, String> {
 }
 
 fn set_role(config_path: &Path, file: Option<&Path>, name: &str, role: &str) -> Result<(), String> {
-    let role = match role.to_ascii_lowercase().as_str() {
-        "active" => Role::Active,
-        "bank" => Role::Bank,
-        "parked" => Role::Parked,
-        other => return Err(format!("{other} is not a role; use active, bank or parked")),
+    // `unset` is not a role: it removes the decision entirely. Setting a
+    // character back to `active` would still count as having decided, and
+    // would silence suggestions for it forever.
+    let clearing = matches!(
+        role.to_ascii_lowercase().as_str(),
+        "unset" | "none" | "clear"
+    );
+    let role = if clearing {
+        Role::Active
+    } else {
+        match role.to_ascii_lowercase().as_str() {
+            "active" => Role::Active,
+            "bank" => Role::Bank,
+            "parked" => Role::Parked,
+            other => {
+                return Err(format!(
+                    "{other} is not a role; use active, bank, parked, or unset to undo"
+                ))
+            }
+        }
     };
 
     let (characters, _, _) = gather(file)?;
@@ -523,12 +538,24 @@ fn set_role(config_path: &Path, file: Option<&Path>, name: &str, role: &str) -> 
         .to_string();
 
     let mut config = load_config(config_path);
+    if clearing {
+        if config.clear_role(&key) {
+            save_config(config_path, &config)?;
+            println!("{name} is unclassified again, and may be suggested a role.");
+        } else {
+            println!("{name} had no role set.");
+        }
+        return Ok(());
+    }
+
     config.set_role(key, role);
     save_config(config_path, &config)?;
 
     println!("{name} is now {}.", describe_role(role));
     if role != Role::Active {
         println!("It stays in professions, materials and gold; it just leaves the play rotation.");
+    } else {
+        println!("That is an explicit choice, so it will not be suggested a role again.");
     }
     Ok(())
 }

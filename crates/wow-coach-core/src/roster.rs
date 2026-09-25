@@ -71,6 +71,21 @@ impl RosterConfig {
         self.roles.insert(key.into(), role);
     }
 
+    /// Forget a decision, returning the character to unclassified.
+    ///
+    /// This is not the same as setting it active. An explicit role — even
+    /// `active` — means the player has decided, so suggestions stop for that
+    /// character forever. Undoing has to remove the entry rather than
+    /// overwrite it, or there is no way back from a mistaken choice.
+    pub fn clear_role(&mut self, key: &str) -> bool {
+        self.roles.remove(key).is_some()
+    }
+
+    /// Whether the player has decided about this character at all.
+    pub fn is_classified(&self, key: &str) -> bool {
+        self.roles.contains_key(key)
+    }
+
     /// Resolve a player-typed name to a character key, so configuration can be
     /// written in terms of names while staying keyed by identity. Matching is
     /// case-insensitive because players do not type their own capitalisation
