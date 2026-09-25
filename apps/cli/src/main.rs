@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use wow_coach_core::collector::{self, CharacterRecord};
+use wow_coach_core::gap::{self, KnownCharacter};
 use wow_coach_core::roster::{self, Role, RosterConfig};
 
 const COLLECTOR_FILE: &str = "WoWCoachCollector.lua";
@@ -79,8 +80,16 @@ fn run(args: &[String]) -> Result<(), String> {
         "where" => {
             let found = discover();
             if found.is_empty() {
-                println!("No collector file found. Is the addon installed and have you logged in?");
+                println!("No collector file found. Is the addon installed and enabled?");
                 println!("Saved data only appears after you log out or /reload.");
+                let accounts = discover_accounts();
+                for account in &accounts {
+                    println!("  account: {}", account.display());
+                }
+                let waiting = gap::find_gap(&known_characters(&accounts), &BTreeMap::new()).unseen;
+                if !waiting.is_empty() {
+                    println!("  {} character folders are already there", waiting.len());
+                }
             } else {
                 for path in found {
                     println!("{}", path.display());
@@ -114,7 +123,9 @@ fn default_config_path() -> PathBuf {
 /// WoW keeps one tree per flavor, each with its own accounts, so a player can
 /// easily have several files. All of them are read rather than guessing which
 /// one is wanted.
-fn discover() -> Vec<PathBuf> {
+/// Where WoW is normally installed. Shared by both discoveries so they cannot
+/// disagree about which installs exist.
+fn install_roots() -> Vec<PathBuf> {
     let mut roots: Vec<PathBuf> = Vec::new();
     if let Some(home) = std::env::var_os("HOME") {
         roots.push(PathBuf::from(&home).join("Applications/World of Warcraft"));
@@ -122,7 +133,11 @@ fn discover() -> Vec<PathBuf> {
     roots.push(PathBuf::from("/Applications/World of Warcraft"));
     roots.push(PathBuf::from(r"C:\Program Files (x86)\World of Warcraft"));
     roots.push(PathBuf::from(r"C:\Program Files\World of Warcraft"));
+    roots
+}
 
+fn discover() -> Vec<PathBuf> {
+    let roots = install_roots();
     let mut found = Vec::new();
     for root in roots {
         let Ok(flavors) = std::fs::read_dir(&root) else {
@@ -151,6 +166,108 @@ fn discover() -> Vec<PathBuf> {
     found
 }
 
+/// Every character the game has a folder for, beside a collector file we read.
+///
+/// WoW creates `WTF/Account/<account>/<realm>/<character>/` the first time you
+/// log in on a character, so the full roster is on disk whether or not the
+/// collector has ever seen it. Only installs we actually read are walked, so
+/// the gap is never reported against an account whose data we did not load.
+fn known_characters(account_dirs: &[PathBuf]) -> Vec<KnownCharacter> {
+    let mut known = Vec::new();
+    for account_dir in account_dirs {
+        let account_dir = account_dir.as_path();
+        let flavor_dir = account_dir
+            .ancestors()
+            .nth(3)
+            .and_then(|path| path.file_name())
+            .map(|name| name.to_string_lossy().into_owned());
+
+        let Ok(realms) = std::fs::read_dir(account_dir) else {
+            continue;
+        };
+        for realm in realms.flatten() {
+            if !realm.path().is_dir() {
+                continue;
+            }
+            let realm_name = realm.file_name().to_string_lossy().into_owned();
+            // The account's own SavedVariables sits beside the realms.
+            if realm_name == "SavedVariables" {
+                continue;
+            }
+            let Ok(entries) = std::fs::read_dir(realm.path()) else {
+                continue;
+            };
+            for character in entries.flatten() {
+                let path = character.path();
+                if !path.is_dir() {
+                    continue;
+                }
+                // A character folder holds at least one of these. Requiring a
+                // marker keeps stray directories out of the roster, and being
+                // permissive about WHICH one matters because the Forever
+                // client writes some folders with only an addon list in them.
+                let looks_like_character = ["AddOns.txt", "SavedVariables", "config-cache.wtf"]
+                    .iter()
+                    .any(|marker| path.join(marker).exists());
+                if !looks_like_character {
+                    continue;
+                }
+                known.push(KnownCharacter {
+                    flavor_dir: flavor_dir.clone(),
+                    realm: realm_name.clone(),
+                    name: character.file_name().to_string_lossy().into_owned(),
+                });
+            }
+        }
+    }
+    known
+}
+
+/// Every account directory under every installation we can find.
+///
+/// This does not need a collector file to exist, which matters: on a first run
+/// there is no data at all, and "I can see 18 characters, log in on one" is a
+/// far better answer than "nothing found".
+fn discover_accounts() -> Vec<PathBuf> {
+    let mut accounts = Vec::new();
+    for root in install_roots() {
+        let Ok(flavors) = std::fs::read_dir(&root) else {
+            continue;
+        };
+        for flavor in flavors.flatten() {
+            if !flavor.file_name().to_string_lossy().starts_with('_') {
+                continue;
+            }
+            // An install without the addon will never produce data, so naming
+            // its characters would be telling the player to do something that
+            // cannot help.
+            if !flavor
+                .path()
+                .join("Interface/AddOns/WoWCoachCollector")
+                .is_dir()
+            {
+                continue;
+            }
+            let Ok(entries) = std::fs::read_dir(flavor.path().join("WTF/Account")) else {
+                continue;
+            };
+            for account in entries.flatten() {
+                if !account.path().is_dir() {
+                    continue;
+                }
+                // The account-wide SavedVariables folder sits beside the
+                // accounts; it is not one.
+                if account.file_name() == "SavedVariables" {
+                    continue;
+                }
+                accounts.push(account.path());
+            }
+        }
+    }
+    accounts.sort();
+    accounts
+}
+
 fn load_config(path: &Path) -> RosterConfig {
     // A missing config is the normal first run, not a problem.
     let Ok(text) = std::fs::read_to_string(path) else {
@@ -177,22 +294,43 @@ fn save_config(path: &Path, config: &RosterConfig) -> Result<(), String> {
 }
 
 /// Read every file we were given or could find, merging their characters.
-fn gather(file: Option<&Path>) -> Result<(BTreeMap<String, CharacterRecord>, Vec<String>), String> {
+type Gathered = (BTreeMap<String, CharacterRecord>, Vec<String>, Vec<PathBuf>);
+
+fn gather(file: Option<&Path>) -> Result<Gathered, String> {
     let paths = match file {
         Some(path) => vec![path.to_path_buf()],
         None => discover(),
     };
     if paths.is_empty() {
-        return Err(
-            "No collector file found. Install the addon, log in, then log out or \
-                    /reload so the game writes its saved variables.\n\
-                    Run `wow-coach where` to see where it looks."
-                .to_string(),
+        // Nothing captured yet — but the game's own folders still know the
+        // roster, and naming it beats reporting nothing. This is the first-run
+        // case the whole gap feature exists for.
+        let waiting =
+            gap::find_gap(&known_characters(&discover_accounts()), &BTreeMap::new()).unseen;
+        let mut message = String::from(
+            "No collector data yet. Log in on a character, then log out or /reload — \
+             the game only writes its saved variables then.",
         );
+        if !waiting.is_empty() {
+            let mut names: Vec<&str> = waiting
+                .iter()
+                .map(|character| character.name.as_str())
+                .collect();
+            names.sort_unstable();
+            names.dedup();
+            let _ = write!(
+                message,
+                "\n\nThe game already has folders for {} characters: {}.",
+                names.len(),
+                names.join(", ")
+            );
+        }
+        return Err(message);
     }
 
     let mut characters = BTreeMap::new();
     let mut notices = Vec::new();
+    let read_paths = paths.clone();
     for path in paths {
         let text = std::fs::read_to_string(&path)
             .map_err(|error| format!("could not read {}: {error}", path.display()))?;
@@ -214,7 +352,7 @@ fn gather(file: Option<&Path>) -> Result<(BTreeMap<String, CharacterRecord>, Vec
             }
         }
     }
-    Ok((characters, notices))
+    Ok((characters, notices, read_paths))
 }
 
 fn set_role(config_path: &Path, file: Option<&Path>, name: &str, role: &str) -> Result<(), String> {
@@ -225,7 +363,7 @@ fn set_role(config_path: &Path, file: Option<&Path>, name: &str, role: &str) -> 
         other => return Err(format!("{other} is not a role; use active, bank or parked")),
     };
 
-    let (characters, _) = gather(file)?;
+    let (characters, _, _) = gather(file)?;
     let key = RosterConfig::resolve(&characters, name)
         .ok_or_else(|| format!("no character called {name} in your saved data"))?
         .to_string();
@@ -250,7 +388,7 @@ fn describe_role(role: Role) -> &'static str {
 }
 
 fn show_roster(file: Option<&Path>, config_path: &Path) -> Result<(), String> {
-    let (characters, notices) = gather(file)?;
+    let (characters, notices, read_paths) = gather(file)?;
     let config = load_config(config_path);
     let mut entries = roster::roster(&characters, &config);
 
@@ -299,6 +437,22 @@ fn show_roster(file: Option<&Path>, config_path: &Path) -> Result<(), String> {
                 .map(|c| c.to_string())
                 .unwrap_or_else(dash),
             record.gold().map(|g| format!("{g}g")).unwrap_or_else(dash),
+        );
+    }
+
+    // <flavor>/WTF/Account/<account>/SavedVariables/WoWCoachCollector.lua
+    let account_dirs: Vec<PathBuf> = read_paths
+        .iter()
+        .filter_map(|file| file.parent().and_then(Path::parent))
+        .map(Path::to_path_buf)
+        .collect();
+    let roster_gap = gap::find_gap(&known_characters(&account_dirs), &characters);
+    if let Some(summary) = roster_gap.summary() {
+        println!();
+        println!("{summary}");
+        println!(
+            "Until then, anything about which character to play is being decided \
+             without seeing those."
         );
     }
 

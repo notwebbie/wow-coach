@@ -344,3 +344,120 @@ fn keys_stay_distinct_across_flavors() {
         .collect();
     assert_eq!(levels.len(), 2);
 }
+
+// ---------------------------------------------------------------------------
+// Roster gap
+// ---------------------------------------------------------------------------
+
+use wow_coach_core::gap::{self, KnownCharacter};
+
+fn known(flavor: &str, realm: &str, name: &str) -> KnownCharacter {
+    KnownCharacter {
+        flavor_dir: Some(flavor.to_string()),
+        realm: realm.to_string(),
+        name: name.to_string(),
+    }
+}
+
+#[test]
+fn reports_characters_the_collector_has_never_seen() {
+    let loaded = collector::load(&fixture("collector-v2.tbc.lua")).unwrap();
+    let all = vec![
+        known("_anniversary_", "Test Realm", "Testhero"),
+        known("_anniversary_", "Test Realm", "Otherhero"),
+        known("_anniversary_", "Test Realm", "Thirdhero"),
+    ];
+
+    let result = gap::find_gap(&all, &loaded.db.characters);
+    assert_eq!(result.captured, vec!["Testhero"]);
+    assert_eq!(result.total(), 3);
+    assert!(!result.is_complete());
+
+    let unseen: Vec<&str> = result
+        .unseen
+        .iter()
+        .map(|character| character.name.as_str())
+        .collect();
+    assert_eq!(unseen, vec!["Otherhero", "Thirdhero"]);
+
+    let summary = result.summary().expect("a gap should produce a summary");
+    assert!(summary.contains("1 of 3"));
+    assert!(summary.contains("Otherhero"));
+}
+
+#[test]
+fn a_full_roster_reports_no_gap() {
+    let loaded = collector::load(&fixture("collector-v2.tbc.lua")).unwrap();
+    let all = vec![known("_anniversary_", "Test Realm", "Testhero")];
+    let result = gap::find_gap(&all, &loaded.db.characters);
+    assert!(result.is_complete());
+    assert_eq!(
+        result.summary(),
+        None,
+        "with nothing missing there is nothing to say"
+    );
+}
+
+#[test]
+fn matching_ignores_case() {
+    // Folder names and the game's own capitalisation do not always agree.
+    let loaded = collector::load(&fixture("collector-v2.tbc.lua")).unwrap();
+    let all = vec![known("_anniversary_", "test realm", "TESTHERO")];
+    assert!(gap::find_gap(&all, &loaded.db.characters).is_complete());
+}
+
+#[test]
+fn the_same_name_on_another_realm_is_a_different_character() {
+    let loaded = collector::load(&fixture("collector-v2.tbc.lua")).unwrap();
+    let all = vec![
+        known("_anniversary_", "Test Realm", "Testhero"),
+        known("_anniversary_", "Another Realm", "Testhero"),
+    ];
+    let result = gap::find_gap(&all, &loaded.db.characters);
+    assert_eq!(result.unseen.len(), 1, "the other realm's copy is unseen");
+    assert_eq!(result.unseen[0].realm, "Another Realm");
+}
+
+#[test]
+fn forevers_duplicate_folder_tree_does_not_invent_characters() {
+    // The Forever client writes the real character folder under a numeric
+    // realm as `Gravehexx-Gravehex`, and a stub under the ruleset name as
+    // `Gravehexx`. Both turn up in a folder walk; only one is a character.
+    let loaded = collector::load(&fixture("collector-v2.forever.lua")).unwrap();
+    let all = vec![
+        known("_classic_beta_", "Classic Beta PvE", "Trollmage"),
+        known("_classic_beta_", "70", "Trollmage-Gemarolt"),
+    ];
+    let result = gap::find_gap(&all, &loaded.db.characters);
+    assert!(
+        result.is_complete(),
+        "the hyphenated duplicate should not appear as a missing character, got {:?}",
+        result.unseen
+    );
+}
+
+#[test]
+fn an_unrelated_hyphenated_name_is_kept() {
+    // Dropping every hyphenated name would hide real characters; only ones
+    // shadowed by a plainer name in the same flavor are duplicates.
+    let loaded = collector::load(&fixture("collector-v2.tbc.lua")).unwrap();
+    let all = vec![
+        known("_anniversary_", "Test Realm", "Testhero"),
+        known("_anniversary_", "Test Realm", "Jean-Luc"),
+    ];
+    let result = gap::find_gap(&all, &loaded.db.characters);
+    assert_eq!(result.unseen.len(), 1);
+    assert_eq!(result.unseen[0].name, "Jean-Luc");
+}
+
+#[test]
+fn knowing_nothing_about_the_roster_reports_no_false_gap() {
+    // A client that cannot enumerate folders passes an empty list. That must
+    // not read as "every character is missing", nor as a complete roster it
+    // has no evidence for.
+    let loaded = collector::load(&fixture("collector-v2.tbc.lua")).unwrap();
+    let result = gap::find_gap(&[], &loaded.db.characters);
+    assert!(result.is_complete());
+    assert_eq!(result.captured.len(), 1);
+    assert_eq!(result.total(), 1);
+}
