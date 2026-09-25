@@ -1,3 +1,4 @@
+pub mod classify;
 pub mod coaching;
 pub mod collector;
 pub mod gap;

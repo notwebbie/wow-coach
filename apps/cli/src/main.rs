@@ -12,6 +12,7 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use wow_coach_core::classify::{self, Confidence};
 use wow_coach_core::coaching::{self, Rested};
 use wow_coach_core::collector::{self, CharacterRecord};
 use wow_coach_core::gap::{self, KnownCharacter};
@@ -40,6 +41,7 @@ USAGE:
     wow-coach next [--file <path>] [--config <path>]
     wow-coach history [<character>] [--file <path>] [--store <path>]
     wow-coach doctor
+    wow-coach classify [--dry-run] [--file <path>] [--config <path>]
     wow-coach set-role <character> <active|bank|parked> [--config <path>]
     wow-coach where
 
@@ -50,6 +52,9 @@ filling is doing its job by being left alone.
 `history` shows what has changed over time. Snapshots are recorded
 automatically whenever this tool sees a capture it has not stored — the addon
 overwrites each character on every login, so anything not recorded is lost.
+
+`classify` proposes a role for each character you have not decided about, shows
+the evidence, and asks. It never sets one on its own.
 
 `doctor` checks which supporting addons are installed.
 
@@ -64,6 +69,7 @@ fn run(args: &[String]) -> Result<(), String> {
     let mut file: Option<PathBuf> = None;
     let mut config_path: Option<PathBuf> = None;
     let mut store_path: Option<PathBuf> = None;
+    let mut dry_run = false;
     let mut positional: Vec<&str> = Vec::new();
 
     let mut index = 0;
@@ -83,6 +89,7 @@ fn run(args: &[String]) -> Result<(), String> {
                     args.get(index).ok_or("--store needs a path")?,
                 ));
             }
+            "--dry-run" => dry_run = true,
             "--config" => {
                 index += 1;
                 config_path = Some(PathBuf::from(
@@ -133,6 +140,7 @@ fn run(args: &[String]) -> Result<(), String> {
             doctor();
             Ok(())
         }
+        "classify" => classify_roles(file.as_deref(), &config_path, &store_path, dry_run),
         "history" => show_history(positional.first().copied(), file.as_deref(), &store_path),
         "next" => show_next(file.as_deref(), &config_path),
         "roster" => show_roster(file.as_deref(), &config_path),
@@ -631,6 +639,102 @@ fn describe_xp(gain: &XpGain) -> String {
     }
 }
 
+fn now_epoch() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs() as i64)
+        .unwrap_or_default()
+}
+
+/// Propose a role for each unclassified character and ask.
+///
+/// Tagging a large roster by hand is a chore nobody does, and an untagged
+/// roster makes every rotation suggestion worse. So the tool guesses from what
+/// it can see — and then asks, because a bank alt and a character whose owner
+/// was on holiday look identical from the outside.
+fn classify_roles(
+    file: Option<&Path>,
+    config_path: &Path,
+    store_path: &Path,
+    dry_run: bool,
+) -> Result<(), String> {
+    let (characters, _, _) = gather(file)?;
+    let (store, _) = record_history(store_path, &characters)?;
+    let mut config = load_config(config_path);
+    let entries = roster::roster(&characters, &config);
+    let suggestions = classify::suggest_all(&entries, &config, &store, now_epoch());
+
+    if suggestions.is_empty() {
+        println!("Nothing to propose — every character is either classified or looks active.");
+        return Ok(());
+    }
+
+    println!(
+        "{} character(s) look like they might not belong in the play rotation.\n",
+        suggestions.len()
+    );
+
+    let mut changed = 0;
+    for suggestion in &suggestions {
+        println!(
+            "{}  —  suggest {} ({})",
+            suggestion.name,
+            describe_role(suggestion.suggested),
+            suggestion.confidence.describe()
+        );
+        for line in &suggestion.evidence {
+            println!("    {line}");
+        }
+        if suggestion.confidence == Confidence::Possible {
+            println!("    This is a guess from a single capture; it may simply be new.");
+        }
+
+        if dry_run {
+            println!();
+            continue;
+        }
+
+        print!("    accept / [a]ctive / [b]ank / [p]arked / [s]kip / [q]uit? [accept] ");
+        use std::io::Write as _;
+        let _ = std::io::stdout().flush();
+
+        let mut answer = String::new();
+        if std::io::stdin().read_line(&mut answer).is_err() {
+            println!();
+            break;
+        }
+        let chosen = match answer.trim().to_ascii_lowercase().as_str() {
+            "" | "accept" | "y" | "yes" => Some(suggestion.suggested),
+            "a" | "active" => Some(Role::Active),
+            "b" | "bank" => Some(Role::Bank),
+            "p" | "parked" => Some(Role::Parked),
+            "q" | "quit" => break,
+            _ => None,
+        };
+        match chosen {
+            Some(role) => {
+                config.set_role(suggestion.key.clone(), role);
+                changed += 1;
+                println!("    -> {}", describe_role(role));
+            }
+            None => println!("    -> left undecided"),
+        }
+        println!();
+    }
+
+    if dry_run {
+        println!("Nothing was changed. Drop --dry-run to decide.");
+        return Ok(());
+    }
+    if changed > 0 {
+        save_config(config_path, &config)?;
+        println!("Saved {changed} role(s) to {}.", config_path.display());
+    } else {
+        println!("Nothing changed.");
+    }
+    Ok(())
+}
+
 fn show_history(name: Option<&str>, file: Option<&Path>, store_path: &Path) -> Result<(), String> {
     let (characters, _, _) = gather(file)?;
     let (store, added) = record_history(store_path, &characters)?;
@@ -962,7 +1066,16 @@ fn show_roster(file: Option<&Path>, config_path: &Path) -> Result<(), String> {
 
     if !entries.is_empty() {
         println!();
-        println!("Run `wow-coach next` for what to play and why.");
+        let store = load_history(&default_store_path());
+        let pending = classify::suggest_all(&entries, &config, &store, now_epoch()).len();
+        if pending > 0 {
+            println!(
+                "Run `wow-coach next` for what to play, or `wow-coach classify` — \
+                 {pending} character(s) may not belong in the rotation."
+            );
+        } else {
+            println!("Run `wow-coach next` for what to play and why.");
+        }
     }
 
     if !notices.is_empty() {

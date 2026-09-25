@@ -34,6 +34,32 @@ this way, including what was rejected.
 [`docs/COLLECTOR-SCHEMA.md`](docs/COLLECTOR-SCHEMA.md) is the addon's data
 contract — the format every client reads.
 
+## Roles
+
+Every character has a role, and a role decides which rules apply to it — not
+whether it is shown.
+
+| Role | In "what should I play next" | In professions, bags and gold |
+|---|---|---|
+| `active` | yes | yes |
+| `bank` | no | yes |
+| `parked` | no | yes |
+
+A bank alt keeps everything it is being kept for; it simply stops being
+suggested and stops being reminded about talent points it will never spend.
+
+```sh
+wow-coach classify          # proposes roles from evidence, and asks
+wow-coach set-role <name> bank
+```
+
+`classify` exists because tagging a large roster by hand is a chore nobody
+does, and an untagged roster makes every rotation suggestion worse. It guesses
+from level, quest log and whether a character has actually gained anything over
+time — then asks, because a bank alt and a character whose owner was away look
+identical from the outside. It never sets a role on its own, and never
+re-proposes one you have already decided.
+
 ## Addons
 
 | Addon | | What it gives you |
