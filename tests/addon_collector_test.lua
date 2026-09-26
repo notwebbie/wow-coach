@@ -135,6 +135,29 @@ end
 function GetTradeSkillRecipeLink(index)
     return "|cffffd000|Hspell:" .. (11450 + index) .. "|h[Recipe]|h|r"
 end
+-- Reagents: Elixir of Fortitude (index 2) takes 1 Goldthorn and 2 Stranglekelp.
+function GetTradeSkillNumReagents(index)
+    if index == 2 then return 2 end
+    return 1
+end
+function GetTradeSkillReagentInfo(index, slot)
+    if index == 2 and slot == 1 then return "Goldthorn", "tex", 1, 5 end
+    if index == 2 and slot == 2 then return "Stranglekelp", "tex", 2, 0 end
+    return "Peacebloom", "tex", 1, 3
+end
+function GetTradeSkillReagentItemLink(index, slot)
+    if index == 2 and slot == 1 then return "|cff00ff00|Hitem:3356:0:0:0|h[Goldthorn]|h|r" end
+    if index == 2 and slot == 2 then return "|cff00ff00|Hitem:3820:0:0:0|h[Stranglekelp]|h|r" end
+    return "|cff00ff00|Hitem:2447:0:0:0|h[Peacebloom]|h|r"
+end
+function GetTradeSkillItemLink(index)
+    if index == 2 then return "|cff00ff00|Hitem:3825:0:0:0|h[Elixir of Fortitude]|h|r" end
+    return "|cff00ff00|Hitem:929:0:0:0|h[Healing Potion]|h|r"
+end
+function GetTradeSkillNumMade(index)
+    if index == 2 then return 1, 1 end
+    return 1, 2
+end
 
 local craft_open = false
 function GetCraftDisplaySkillLine()
@@ -149,6 +172,12 @@ function GetCraftInfo(index)
 end
 function GetCraftRecipeLink(index)
     return "|cffffd000|Henchant:" .. (7418 + index) .. "|h[Enchant]|h|r"
+end
+-- An enchant consumes reagents but produces no item.
+function GetCraftNumReagents(index) return 1 end
+function GetCraftReagentInfo(index, slot) return "Strange Dust", "tex", 3, 12 end
+function GetCraftReagentItemLink(index, slot)
+    return "|cffffffff|Hitem:10940:0:0:0|h[Strange Dust]|h|r"
 end
 
 --------------------------------------------------------------------------------
@@ -325,6 +354,26 @@ check(recipes and recipes.Alchemy and recipes.Alchemy.recipes[1].spellID == 1145
 check(recipes and recipes.Alchemy and recipes.Alchemy.capturedAt == world.now,
     "recipes are a cache and must be timestamped")
 
+-- Reagents are the difference between "knows the recipe" and "can make it".
+local elixir = recipes and recipes.Alchemy and recipes.Alchemy.recipes[1]
+check(elixir and elixir.reagents and #elixir.reagents == 2,
+    "both reagent slots should be captured")
+check(elixir and elixir.reagents and elixir.reagents[1].itemID == 3356,
+    "reagent item id should be parsed out of the reagent link")
+check(elixir and elixir.reagents and elixir.reagents[2].count == 2,
+    "the required count, not the carried count, is what belongs in a recipe")
+check(elixir and elixir.makesItemID == 3825,
+    "the produced item is what lets a craft be valued")
+check(elixir and elixir.makesMin == 1 and elixir.makesMax == 1,
+    "how many it makes bounds the value")
+local potion = recipes and recipes.Alchemy and recipes.Alchemy.recipes[2]
+check(potion and potion.makesMax == 2, "a variable yield keeps both bounds")
+-- playerReagentCount is a fact about one bag at one moment, and the bag
+-- capture already answers that for every character. Storing it here would put
+-- a second, staler answer to the same question in the file.
+check(elixir and elixir.reagents and elixir.reagents[1].playerCount == nil,
+    "the crafter's carried count must not be persisted with the recipe")
+
 -- TBC keeps Enchanting on the separate Craft API.
 trade_open = false
 craft_open = true
@@ -332,6 +381,13 @@ frame:Fire("CRAFT_SHOW")
 recipes = record().recipes
 check(recipes and recipes.Enchanting, "craft capture should store Enchanting")
 check(recipes and recipes.Enchanting and #recipes.Enchanting.recipes == 1, "craft headers should be excluded")
+local enchant = recipes and recipes.Enchanting and recipes.Enchanting.recipes[1]
+check(enchant and enchant.reagents and enchant.reagents[1].itemID == 10940,
+    "craft reagents should be captured on the Craft API too")
+check(enchant and enchant.reagents and enchant.reagents[1].count == 3,
+    "craft reagent counts should be captured")
+check(enchant and enchant.makesItemID == nil,
+    "an enchant produces no item and none should be invented")
 check(recipes and recipes.Enchanting and recipes.Enchanting.recipes[1].spellID == 7420,
     "enchant link id should be parsed")
 check(recipes and recipes.Alchemy, "a craft capture must not discard trade skill data")

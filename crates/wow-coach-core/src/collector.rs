@@ -266,6 +266,45 @@ pub struct Recipe {
     pub difficulty: Option<String>,
     #[serde(rename = "spellID")]
     pub spell_id: Option<u32>,
+    /// What it consumes. Absent means the reagents were not captured, never
+    /// that the recipe is free.
+    #[serde(deserialize_with = "empty_table_as_list")]
+    pub reagents: Option<Vec<Reagent>>,
+    /// What it produces. Absent for a recipe with no item output — an enchant
+    /// applied straight to gear makes nothing to sell.
+    #[serde(rename = "makesItemID")]
+    pub makes_item_id: Option<u32>,
+    pub makes_min: Option<u32>,
+    pub makes_max: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Reagent {
+    #[serde(rename = "itemID")]
+    pub item_id: Option<u32>,
+    /// The client's name for it, when the capture had one. Never a key.
+    pub name: Option<String>,
+    /// How many the recipe requires — never how many anyone is carrying.
+    pub count: Option<u32>,
+    /// How many interchangeable items this slot accepts, when more than one.
+    /// Present only on clients that model a slot as a set of choices.
+    pub choices: Option<u32>,
+}
+
+impl Recipe {
+    /// The middle of the yield range, for valuing a craft.
+    ///
+    /// A recipe that makes one to two of a thing is worth its average, not its
+    /// best case. Absent when nothing said how many it makes — which is not
+    /// the same as one.
+    pub fn makes_typical(&self) -> Option<u32> {
+        match (self.makes_min, self.makes_max) {
+            (Some(low), Some(high)) if high >= low => Some((low + high) / 2),
+            (Some(only), None) | (None, Some(only)) => Some(only),
+            _ => None,
+        }
+    }
 }
 
 /// What went wrong reading a file.

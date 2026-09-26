@@ -230,7 +230,18 @@ the client happened to have the item loaded.
         ["rank"] = 225,
         ["maxRank"] = 300,
         ["recipes"] = {
-            { ["name"] = "Elixir of Fortitude", ["difficulty"] = "optimal", ["spellID"] = 11452 },
+            {
+                ["name"] = "Elixir of Fortitude",
+                ["difficulty"] = "optimal",
+                ["spellID"] = 11452,
+                ["reagents"] = {
+                    { ["itemID"] = 3356, ["name"] = "Goldthorn", ["count"] = 1 },
+                    { ["itemID"] = 3820, ["name"] = "Stranglekelp", ["count"] = 2 },
+                },
+                ["makesItemID"] = 3825,
+                ["makesMin"] = 1,
+                ["makesMax"] = 1,
+            },
             ...
         },
     },
@@ -252,6 +263,34 @@ land in this same structure.
 skill (`optimal`, `medium`, `easy`, `trivial`). `spellID` is best-effort: it is
 parsed out of the recipe link where the client provides one, and absent
 otherwise.
+
+#### Reagents and output
+
+`reagents` is what one craft consumes. `count` is **what the recipe requires**,
+never what anybody is carrying: the client also reports the crafting
+character's own stock of each reagent, and that is deliberately not stored,
+because it is a fact about one bag at one moment and the inventory capture
+already answers it properly for every character. Two answers to the same
+question, one of them staler, is worse than one.
+
+`itemID` is the join key; `name` is a convenience and, like every name in this
+schema, is locale-dependent and must never be matched on.
+
+`choices` appears only on clients that model a reagent slot as a set of
+interchangeable items. When present it is how many the slot accepts, and the
+recorded `itemID` is the first of them — so a reader can tell a firm
+requirement from a substitutable one, and should soften any shortfall it
+reports on such a slot.
+
+`makesItemID`, `makesMin` and `makesMax` describe the output. All three are
+absent for a recipe that produces no item: an enchant is applied directly to
+gear and makes nothing, which is why a reader must treat a missing output as
+"nothing to sell" rather than as a capture failure.
+
+Absent `reagents` means they were not captured — by an older collector, or from
+a client path that does not expose them. It does not mean the recipe is free,
+and a reader must not report such a recipe as makeable or as unmakeable. Saying
+nothing is the only honest option.
 
 ## Compatibility rules
 

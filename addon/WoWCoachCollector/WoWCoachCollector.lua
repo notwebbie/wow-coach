@@ -440,6 +440,71 @@ local function spellIDFromLink(link)
     return id and tonumber(id) or nil
 end
 
+local function itemIDFromLink(link)
+    if type(link) ~= "string" then return nil end
+    local id = link:match("|Hitem:(%d+)")
+    return id and tonumber(id) or nil
+end
+
+-- What a recipe consumes, as item ids and counts.
+--
+-- Reagents are the difference between "you know this recipe" and "you can make
+-- this": a roster-wide crafting view cannot say where the materials are, or
+-- what a craft costs, without them. They are only readable while the trade
+-- skill window is open, exactly like the recipe list they belong to, so they
+-- are part of the same opportunistic cache and carry the same staleness.
+--
+-- `playerCount` is deliberately NOT stored. It counts what the crafting
+-- character is carrying at that moment, which is a fact about a bag at a
+-- timestamp, not about the recipe — and the bag capture already records that
+-- properly for every character. Persisting it would put a second, staler
+-- answer to the same question into the file.
+local function tradeSkillReagents(index)
+    if not GetTradeSkillNumReagents then return nil end
+    local count = GetTradeSkillNumReagents(index)
+    if not count or count == 0 then return nil end
+    local reagents = {}
+    for slot = 1, count do
+        local name, _, required
+        if GetTradeSkillReagentInfo then
+            name, _, required = GetTradeSkillReagentInfo(index, slot)
+        end
+        local itemID
+        if GetTradeSkillReagentItemLink then
+            local ok, link = pcall(GetTradeSkillReagentItemLink, index, slot)
+            if ok then itemID = itemIDFromLink(link) end
+        end
+        if itemID or name then
+            reagents[#reagents + 1] = { itemID = itemID, name = name, count = required }
+        end
+    end
+    if #reagents == 0 then return nil end
+    return reagents
+end
+
+local function craftReagents(index)
+    if not GetCraftNumReagents then return nil end
+    local count = GetCraftNumReagents(index)
+    if not count or count == 0 then return nil end
+    local reagents = {}
+    for slot = 1, count do
+        local name, _, required
+        if GetCraftReagentInfo then
+            name, _, required = GetCraftReagentInfo(index, slot)
+        end
+        local itemID
+        if GetCraftReagentItemLink then
+            local ok, link = pcall(GetCraftReagentItemLink, index, slot)
+            if ok then itemID = itemIDFromLink(link) end
+        end
+        if itemID or name then
+            reagents[#reagents + 1] = { itemID = itemID, name = name, count = required }
+        end
+    end
+    if #reagents == 0 then return nil end
+    return reagents
+end
+
 local function captureTradeSkillUI()
     if not has("C_TradeSkillUI.GetBaseProfessionInfo") then return nil end
     if has("C_TradeSkillUI.IsTradeSkillReady") and not C_TradeSkillUI.IsTradeSkillReady() then
@@ -457,10 +522,40 @@ local function captureTradeSkillUI()
     for _, recipeID in ipairs(ids) do
         local recipe = C_TradeSkillUI.GetRecipeInfo(recipeID)
         if type(recipe) == "table" and recipe.name then
-            entries[#entries + 1] = {
+            local entry = {
                 name = recipe.name, spellID = recipeID,
                 difficulty = recipe.relativeDifficulty,
             }
+            -- The modern client describes a recipe as a schematic rather than
+            -- an indexed list, so reagents come from a different shape than
+            -- the Classic path. A slot can hold several interchangeable items
+            -- (any rank of a herb, say); the first is recorded as the
+            -- representative and `choices` says how many others there were, so
+            -- a reader can tell a firm requirement from a substitutable one.
+            if has("C_TradeSkillUI.GetRecipeSchematic") then
+                local ok, schematic = pcall(C_TradeSkillUI.GetRecipeSchematic, recipeID, false)
+                if ok and type(schematic) == "table" then
+                    entry.makesItemID = schematic.outputItemID
+                    entry.makesMin = schematic.quantityMin
+                    entry.makesMax = schematic.quantityMax
+                    local slots = schematic.reagentSlotSchematics
+                    if type(slots) == "table" then
+                        local reagents = {}
+                        for _, slot in ipairs(slots) do
+                            local first = type(slot.reagents) == "table" and slot.reagents[1] or nil
+                            if first and first.itemID then
+                                reagents[#reagents + 1] = {
+                                    itemID = first.itemID,
+                                    count = slot.quantityRequired,
+                                    choices = #slot.reagents > 1 and #slot.reagents or nil,
+                                }
+                            end
+                        end
+                        if #reagents > 0 then entry.reagents = reagents end
+                    end
+                end
+            end
+            entries[#entries + 1] = entry
         end
     end
     if #entries == 0 then return nil end
@@ -482,7 +577,23 @@ local function captureTradeSkill()
                 local ok, link = pcall(GetTradeSkillRecipeLink, index)
                 if ok then spellID = spellIDFromLink(link) end
             end
-            entries[#entries + 1] = { name = name, difficulty = difficulty, spellID = spellID }
+            -- What it makes, so the craft can be valued rather than only named.
+            -- Absent for a recipe that produces no item — an enchant applied
+            -- directly to gear has no output to sell.
+            local makesItemID, makesMin, makesMax
+            if GetTradeSkillItemLink then
+                local ok, link = pcall(GetTradeSkillItemLink, index)
+                if ok then makesItemID = itemIDFromLink(link) end
+            end
+            if GetTradeSkillNumMade then
+                local ok, low, high = pcall(GetTradeSkillNumMade, index)
+                if ok then makesMin, makesMax = low, high end
+            end
+            entries[#entries + 1] = {
+                name = name, difficulty = difficulty, spellID = spellID,
+                reagents = tradeSkillReagents(index),
+                makesItemID = makesItemID, makesMin = makesMin, makesMax = makesMax,
+            }
         end
     end
     if #entries == 0 then return nil end
@@ -503,7 +614,13 @@ local function captureCraft()
                 local ok, link = pcall(GetCraftRecipeLink, index)
                 if ok then spellID = spellIDFromLink(link) end
             end
-            entries[#entries + 1] = { name = name, difficulty = difficulty, spellID = spellID }
+            -- The Craft API is TBC's Enchanting path. Enchants are applied to
+            -- gear rather than produced as items, so there is no output item
+            -- to record and none is invented.
+            entries[#entries + 1] = {
+                name = name, difficulty = difficulty, spellID = spellID,
+                reagents = craftReagents(index),
+            }
         end
     end
     if #entries == 0 then return nil end

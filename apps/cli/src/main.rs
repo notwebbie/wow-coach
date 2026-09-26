@@ -16,6 +16,7 @@ use wow_coach_core::auctionator::{self, PriceDb};
 use wow_coach_core::classify::{self, Confidence};
 use wow_coach_core::coaching::{self, Rested};
 use wow_coach_core::collector::{self, CharacterRecord};
+use wow_coach_core::crafting;
 use wow_coach_core::economy;
 use wow_coach_core::gap::{self, KnownCharacter};
 use wow_coach_core::history::{self, History, Snapshot, XpGain};
@@ -51,6 +52,7 @@ USAGE:
     wow-coach classify [--dry-run] [--file <path>] [--config <path>]
     wow-coach set-role <character> <active|bank|parked|unset> [--config <path>]
     wow-coach economy [--all] [--prices <path>] [--file <path>] [--config <path>]
+    wow-coach craft [--all] [--prices <path>] [--file <path>] [--config <path>]
     wow-coach where
 
 `next` ranks your rotation by what is being lost: a character at the rested cap
@@ -68,6 +70,10 @@ the evidence, and asks. It never sets one on its own.
 Auctionator's record of the last minimum buyout it saw. Every character counts
 here whatever its role — that is what marking a bank alt is for. Those values
 are before the auction house's cut and assume the stock would sell.
+
+`craft` answers the question no single character can: who knows the recipe,
+which character is holding the materials, and whether it is worth making. The
+recipe and the reagents routinely live on different alts.
 
 `doctor` checks which supporting addons are installed.
 
@@ -165,6 +171,12 @@ fn run(args: &[String]) -> Result<(), String> {
         "classify" => classify_roles(file.as_deref(), &config_path, &store_path, dry_run),
         "history" => show_history(positional.first().copied(), file.as_deref(), &store_path),
         "economy" => show_economy(
+            file.as_deref(),
+            prices_path.as_deref(),
+            &config_path,
+            if show_all { usize::MAX } else { DEFAULT_LIMIT },
+        ),
+        "craft" => show_craft(
             file.as_deref(),
             prices_path.as_deref(),
             &config_path,
@@ -1468,4 +1480,141 @@ fn describe_role_short(role: Role) -> &'static str {
         Role::Bank => "bank",
         Role::Parked => "parked",
     }
+}
+
+fn show_craft(
+    file: Option<&Path>,
+    prices_path: Option<&Path>,
+    config_path: &Path,
+    limit: usize,
+) -> Result<(), String> {
+    let (characters, notices, _) = gather(file)?;
+    if let Err(error) = record_history(&default_store_path(), &characters) {
+        eprintln!("warning: history not recorded: {error}");
+    }
+    let config = load_config(config_path);
+    let entries = roster::roster(&characters, &config);
+    let (prices, problems) = load_prices(prices_path);
+
+    // The economy survey already totals holdings per market and per item, so
+    // crafting reads its answer rather than computing a second one that could
+    // disagree with it.
+    let survey = economy::survey(&entries, &prices);
+    let holdings: Vec<economy::Holding> = survey
+        .holdings
+        .iter()
+        .chain(&survey.unpriced)
+        .cloned()
+        .collect();
+    let plan = crafting::plan(&entries, &holdings, &prices);
+
+    println!("CAN MAKE NOW");
+    if plan.ready.is_empty() {
+        println!("  Nothing the roster holds the materials for.");
+    } else {
+        for craftable in plan.ready.iter().take(limit) {
+            println!(
+                "  {:<34} x{:<4} {:<16} {}",
+                truncate(&craftable.recipe, 34),
+                craftable.can_make_now,
+                truncate(&margin_text(craftable), 16),
+                truncate(&crafter_text(craftable), 30),
+            );
+            for reagent in &craftable.reagents {
+                println!(
+                    "      {:<28} {:>3}/{:<5} {}",
+                    truncate(&reagent_label(reagent), 28),
+                    reagent.needed,
+                    reagent.held,
+                    truncate(&reagent_holders(reagent), 34),
+                );
+            }
+        }
+        if plan.ready.len() > limit {
+            println!(
+                "  … and {} more; --all shows every one.",
+                plan.ready.len() - limit
+            );
+        }
+    }
+
+    if !plan.worth_shopping_for.is_empty() {
+        println!();
+        println!("WORTH BUYING THE MISSING PIECES FOR");
+        for craftable in plan.worth_shopping_for.iter().take(limit.min(10)) {
+            let short: Vec<String> = craftable
+                .missing()
+                .iter()
+                .map(|reagent| format!("{} x{}", reagent_label(reagent), reagent.short_by()))
+                .collect();
+            println!(
+                "  {:<34} {:<16} short: {}",
+                truncate(&craftable.recipe, 34),
+                truncate(&margin_text(craftable), 16),
+                truncate(&short.join(", "), 44),
+            );
+            if let Some(cost) = craftable.shortfall_cost {
+                println!("      buying the shortfall costs about {}", money(cost));
+            }
+        }
+        if plan.worth_shopping_for.len() > limit.min(10) {
+            println!(
+                "  … and {} more.",
+                plan.worth_shopping_for.len() - limit.min(10)
+            );
+        }
+    }
+
+    if !plan.caveats.is_empty() {
+        println!();
+        for caveat in &plan.caveats {
+            println!("Note: {caveat}");
+        }
+    }
+    for problem in problems {
+        eprintln!("warning: {problem}");
+    }
+    for notice in notices {
+        eprintln!("note: {notice}");
+    }
+    Ok(())
+}
+
+fn reagent_label(reagent: &crafting::ReagentStatus) -> String {
+    let base = match &reagent.name {
+        Some(name) => name.clone(),
+        None => format!("item {}", reagent.item_id),
+    };
+    if reagent.has_substitutes {
+        // A shortfall on a slot with alternatives may not be a real one.
+        format!("{base} (or similar)")
+    } else {
+        base
+    }
+}
+
+fn reagent_holders(reagent: &crafting::ReagentStatus) -> String {
+    if reagent.held_by.is_empty() {
+        return "none held".to_string();
+    }
+    reagent
+        .held_by
+        .iter()
+        .map(|(name, count)| format!("{name} {count}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The margin, or an honest statement of why there isn't one.
+fn margin_text(craftable: &crafting::Craftable) -> String {
+    match craftable.margin() {
+        Some(margin) if margin >= 0 => format!("+{}", money(margin as u64)),
+        Some(margin) => format!("-{}", money(margin.unsigned_abs())),
+        None if craftable.output_item_id.is_none() => "no item made".to_string(),
+        None => "not priced".to_string(),
+    }
+}
+
+fn crafter_text(craftable: &crafting::Craftable) -> String {
+    format!("{} ({})", craftable.crafter, craftable.profession)
 }
