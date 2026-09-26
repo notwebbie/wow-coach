@@ -414,6 +414,10 @@ local MAX_RESTED_SAMPLES = 20000
 -- running rather than having silently stopped.
 local HEARTBEAT_SECONDS = 300
 
+-- The last sample taken while the client still had player data, so a logout
+-- has something true to carry forward. See `sampleRested`.
+local lastGoodSample = nil
+
 local function sampleRested(reason)
     -- `x and x() or nil` collapses a false or zero result to nil, which drops
     -- the key entirely and makes "not rested" indistinguishable from "no such
@@ -424,21 +428,56 @@ local function sampleRested(reason)
     if IsResting then resting = IsResting() and true or false end
     if GetRestState then restState = GetRestState() end
 
+    local xp = UnitXP and UnitXP("player") or nil
+    local maxXP = UnitXPMax and UnitXPMax("player") or nil
+
     local store = db().restedSamples
     if #store >= MAX_RESTED_SAMPLES then
         return
     end
-    store[#store + 1] = {
+
+    -- By `PLAYER_LOGOUT` the client has already torn the player down. Observed
+    -- live: `UnitXPMax` and `UnitXP` return 0, `GetXPExhaustion` returns
+    -- nothing and `GetRestState` returns nil, so a sample taken then reads as
+    -- exhaustion 0, not resting — indistinguishable from an empty rested bar.
+    -- Fitting that would put a false zero at the end of every session, which
+    -- is worse than having no logout sample at all: wrong rather than absent.
+    --
+    -- What the logout is still good for is the *time*. So the timestamp is
+    -- kept and the values are carried from the last sample taken while the
+    -- client was still answering, flagged so nothing downstream mistakes them
+    -- for a fresh reading.
+    local tornDown = (maxXP == nil or maxXP == 0)
+    if tornDown and lastGoodSample then
+        store[#store + 1] = {
+            at = time(),
+            reason = reason,
+            carriedFrom = lastGoodSample.at,
+            valuesAreStale = true,
+            exhaustion = lastGoodSample.exhaustion,
+            xp = lastGoodSample.xp,
+            maxXP = lastGoodSample.maxXP,
+            level = lastGoodSample.level,
+            isResting = lastGoodSample.isResting,
+            restState = lastGoodSample.restState,
+            zone = lastGoodSample.zone,
+        }
+        return
+    end
+
+    local sample = {
         at = time(),
         reason = reason,
         exhaustion = exhaustion,
-        xp = UnitXP and UnitXP("player") or nil,
-        maxXP = UnitXPMax and UnitXPMax("player") or nil,
+        xp = xp,
+        maxXP = maxXP,
         level = UnitLevel and UnitLevel("player") or nil,
         isResting = resting,
         restState = restState,
         zone = GetRealZoneText and GetRealZoneText() or nil,
     }
+    store[#store + 1] = sample
+    lastGoodSample = sample
 end
 
 --------------------------------------------------------------------------------

@@ -71,3 +71,57 @@ end
 assert(heartbeats == 2, "a quiet session should still leave a trail, got " .. heartbeats)
 
 print("logout_test: logout sampled at logout time, heartbeat keeps a quiet session traceable")
+
+--------------------------------------------------------------------------------
+-- Live finding, 26 September: by PLAYER_LOGOUT the client has already torn the
+-- player down. The real file recorded:
+--
+--   PLAYER_LOGOUT  exh=0  rest=false  st=nil  lvl=1  xp=0/0
+--
+-- which is not "the rested bar was empty" but "there is nobody to ask any
+-- more" — and the two are indistinguishable once written. A fit would put a
+-- false zero at the end of every session.
+--------------------------------------------------------------------------------
+
+WoWCoachProbeDB = nil
+tickers = {}
+package.loaded["WoWCoachProbe"] = nil
+
+function UnitXP() return 200 end
+function UnitXPMax() return 400 end
+function GetXPExhaustion() return 47 end
+function IsResting() return true end
+function GetRestState() return 1, "Rested", 1 end
+
+local frame2 = { events = {}, scripts = {} }
+function frame2:RegisterEvent(e) self.events[e] = true end
+function frame2:SetScript(s, h) self.scripts[s] = h end
+function CreateFrame() return frame2 end
+
+assert(loadfile("WoWCoachProbe.lua"))("WoWCoachProbe")
+frame2.scripts.OnEvent(frame2, "PLAYER_LOGIN")
+
+local goodAt = now
+-- Now the client tears down, exactly as the real one does.
+function UnitXP() return 0 end
+function UnitXPMax() return 0 end
+function GetXPExhaustion() return nil end
+function IsResting() return false end
+function GetRestState() return nil end
+
+now = now + 600
+frame2.scripts.OnEvent(frame2, "PLAYER_LOGOUT")
+
+local out = WoWCoachProbeDB.restedSamples
+local logout = out[#out]
+assert(logout.reason == "PLAYER_LOGOUT", "still the logout sample")
+assert(logout.at == now, "the logout TIME is the part that is still true")
+assert(logout.exhaustion == 47,
+    "a torn-down client must not overwrite the reading with a false zero (got "
+    .. tostring(logout.exhaustion) .. ")")
+assert(logout.maxXP == 400, "and not a false 0/0")
+assert(logout.isResting == true, "nor a false 'not resting'")
+assert(logout.valuesAreStale == true, "carried values must be flagged as carried")
+assert(logout.carriedFrom == goodAt, "and say which sample they came from")
+
+print("logout_test: a torn-down client keeps the logout time and carries the last true reading")
