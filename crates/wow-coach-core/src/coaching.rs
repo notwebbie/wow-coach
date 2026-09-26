@@ -28,7 +28,7 @@ const NEAR_CAP: f64 = 0.85;
 
 /// How full a quest log has to be before it blocks picking anything up.
 /// The cap differs by client, so this is derived rather than assumed.
-fn quest_log_capacity(flavor: Option<&str>) -> usize {
+pub fn quest_log_capacity(flavor: Option<&str>) -> usize {
     match flavor {
         // Forever raised it well above the vanilla 20.
         Some("forever") => 40,

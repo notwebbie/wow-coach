@@ -20,6 +20,7 @@ use wow_coach_core::crafting;
 use wow_coach_core::economy;
 use wow_coach_core::gap::{self, KnownCharacter};
 use wow_coach_core::history::{self, History, Snapshot, XpGain};
+use wow_coach_core::quests;
 use wow_coach_core::roster::{self, Role, RosterConfig};
 
 const COLLECTOR_FILE: &str = "WoWCoachCollector.lua";
@@ -53,6 +54,7 @@ USAGE:
     wow-coach set-role <character> <active|bank|parked|unset> [--config <path>]
     wow-coach economy [--all] [--prices <path>] [--file <path>] [--config <path>]
     wow-coach craft [--all] [--prices <path>] [--file <path>] [--config <path>]
+    wow-coach quests [<character>] [--all] [--file <path>] [--config <path>]
     wow-coach where
 
 `next` ranks your rotation by what is being lost: a character at the rested cap
@@ -74,6 +76,10 @@ are before the auction house's cut and assume the stock would sell.
 `craft` answers the question no single character can: who knows the recipe,
 which character is holding the materials, and whether it is worth making. The
 recipe and the reagents routinely live on different alts.
+
+`quests` treats the log as a route rather than a list: what is ready to hand
+in, which zone clears the most in one visit, and — only when the log is
+actually full — what to let go of.
 
 `doctor` checks which supporting addons are installed.
 
@@ -179,6 +185,12 @@ fn run(args: &[String]) -> Result<(), String> {
         "craft" => show_craft(
             file.as_deref(),
             prices_path.as_deref(),
+            &config_path,
+            if show_all { usize::MAX } else { DEFAULT_LIMIT },
+        ),
+        "quests" => show_quests(
+            positional.first().copied(),
+            file.as_deref(),
             &config_path,
             if show_all { usize::MAX } else { DEFAULT_LIMIT },
         ),
@@ -1285,11 +1297,58 @@ fn show_economy(
 
     let survey = economy::survey(&entries, &prices);
 
-    println!("PROFESSIONS");
+    // Skills grouped the way the game groups them, so every profession shows
+    // even before its window has been opened. The recipe-backed ones are
+    // marked, because only those can be costed or crafted from.
+    println!("SKILLS");
+    if survey.skills.is_empty() {
+        println!("  None captured yet.");
+    } else {
+        let mut current: Option<&str> = None;
+        for skill in &survey.skills {
+            let header = skill.header.as_deref().unwrap_or("Ungrouped");
+            if current != Some(header) {
+                println!("  {header}");
+                current = Some(header);
+            }
+            let rank = match (skill.rank, skill.max_rank) {
+                (Some(rank), Some(max)) => format!("{rank}/{max}"),
+                (Some(rank), None) => rank.to_string(),
+                _ => dash(),
+            };
+            // Advice only where the skill is *known* to be a trade skill.
+            // Listing every skill was the point of this section, but a rank is
+            // a fact and "needs a trainer" is a judgement, and without the
+            // recipe cache there is nothing to base the judgement on. The
+            // first run of this printed "Language: Orcish 300/300 ← at its cap,
+            // needs training" — which is the exact nonsense the recipe-cache
+            // rule was written to stop, reintroduced one section further down.
+            let note = if !skill.has_recipes {
+                ""
+            } else if skill.is_capped() {
+                "  ← at its cap, needs training to go further"
+            } else if skill.is_near_cap() {
+                "  ← close to its cap"
+            } else {
+                "  (recipes captured)"
+            };
+            println!(
+                "    {:<18} {:<14} {:>9}{}",
+                truncate(&skill.skill, 18),
+                truncate(&skill.character, 14),
+                rank,
+                note
+            );
+        }
+    }
+
+    println!();
+    println!("PROFESSIONS WITH RECIPES");
     if survey.professions.is_empty() {
         println!(
             "  None captured. Open each profession window once in game, then log out — \
-             the client only tells an addon about a trade skill it has been shown."
+             the client only tells an addon about a trade skill it has been shown, \
+             and without recipes nothing can be crafted or costed."
         );
     } else {
         for holder in &survey.professions {
@@ -1617,4 +1676,130 @@ fn margin_text(craftable: &crafting::Craftable) -> String {
 
 fn crafter_text(craftable: &crafting::Craftable) -> String {
     format!("{} ({})", craftable.crafter, craftable.profession)
+}
+
+fn show_quests(
+    who: Option<&str>,
+    file: Option<&Path>,
+    config_path: &Path,
+    limit: usize,
+) -> Result<(), String> {
+    let (characters, notices, _) = gather(file)?;
+    if let Err(error) = record_history(&default_store_path(), &characters) {
+        eprintln!("warning: history not recorded: {error}");
+    }
+    let config = load_config(config_path);
+    let entries = roster::roster(&characters, &config);
+
+    // One character by name, or everyone in the play rotation. A bank alt's
+    // quest log is nobody's plan for the evening.
+    let chosen: Vec<&roster::RosterEntry<'_>> = match who {
+        Some(name) => entries
+            .iter()
+            .filter(|entry| entry.name().eq_ignore_ascii_case(name))
+            .collect(),
+        None => entries
+            .iter()
+            .filter(|entry| entry.role.in_play_rotation())
+            .collect(),
+    };
+    if chosen.is_empty() {
+        return Err(match who {
+            Some(name) => format!("no captured character called {name}"),
+            None => "no character is in the play rotation".to_string(),
+        });
+    }
+
+    for entry in chosen {
+        let plan = quests::plan(entry.record, entry.key);
+        if plan.log.used == 0 && plan.caveats.is_empty() {
+            continue;
+        }
+        println!(
+            "{} — level {}, quest log {}/{}",
+            plan.character,
+            plan.level.map(|l| l.to_string()).unwrap_or_else(dash),
+            plan.log.used,
+            plan.log.capacity
+        );
+
+        if !plan.turn_ins.is_empty() {
+            println!("  READY TO HAND IN");
+            for quest in &plan.turn_ins {
+                println!(
+                    "    {:<40} {}",
+                    truncate(&quest.title, 40),
+                    quest.zone.as_deref().unwrap_or("")
+                );
+            }
+        }
+
+        match plan.best_zone() {
+            Some(zone) => {
+                println!(
+                    "  GO TO {} — {} of your quests are there",
+                    zone.zone,
+                    zone.worth_a_trip()
+                );
+                for quest in zone.complete.iter().chain(&zone.ready).take(limit) {
+                    println!(
+                        "    {:<40} {}",
+                        truncate(&quest.title, 40),
+                        quest_standing(quest)
+                    );
+                }
+            }
+            None => println!("  Nothing in the log is at a level worth going out for."),
+        }
+
+        let others: Vec<&quests::ZoneCluster> = plan
+            .clusters
+            .iter()
+            .skip(1)
+            .filter(|zone| zone.worth_a_trip() > 0)
+            .collect();
+        if !others.is_empty() {
+            let summary: Vec<String> = others
+                .iter()
+                .take(6)
+                .map(|zone| format!("{} {}", zone.zone, zone.worth_a_trip()))
+                .collect();
+            println!("  Then: {}", summary.join(", "));
+        }
+
+        if !plan.drop_candidates.is_empty() {
+            println!("  THE LOG IS FULL — these are the ones to let go of first");
+            for quest in plan.drop_candidates.iter().take(limit.min(6)) {
+                println!(
+                    "    {:<40} {}",
+                    truncate(&quest.title, 40),
+                    quest_standing(quest)
+                );
+            }
+        }
+
+        for caveat in &plan.caveats {
+            println!("  Note: {caveat}");
+        }
+        println!();
+    }
+
+    for notice in notices {
+        eprintln!("note: {notice}");
+    }
+    Ok(())
+}
+
+/// Where a quest sits relative to the player, in words rather than a colour.
+fn quest_standing(quest: &quests::QuestRef) -> String {
+    let level = quest
+        .level
+        .map(|level| format!("L{level}"))
+        .unwrap_or_else(|| "L?".to_string());
+    match quest.standing {
+        quests::Standing::TooHigh { by } => format!("{level}, {by} above you"),
+        quests::Standing::Trivial { by } => format!("{level}, {by} below you"),
+        quests::Standing::Ready => level,
+        quests::Standing::Unknown => "no level recorded".to_string(),
+    }
 }

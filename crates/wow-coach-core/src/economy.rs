@@ -35,6 +35,60 @@ use std::collections::BTreeMap;
 use crate::auctionator::{self, PriceDb, RealmPrices};
 use crate::roster::{Role, RosterEntry};
 
+/// One character's skill, as the game grouped it.
+///
+/// This exists because the recipe-cache rule, while right, under-reports
+/// badly: it can only see a profession whose window has been opened in game,
+/// so a roster with six professions shows one. The skill list has all of them
+/// — it just also has weapon skills, armour proficiencies and languages mixed
+/// in, which is why it was not used alone.
+///
+/// The client already separates those, under the headers the player sees in
+/// the skill window, and the collector now keeps them. So skills are reported
+/// grouped the way the game groups them, and nothing here tries to work out
+/// what a group *means*: the header is locale-dependent and is passed through
+/// untouched for a person to read.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SkillEntry {
+    pub character: String,
+    pub role: Role,
+    /// The game's own heading, verbatim. Never matched on.
+    pub header: Option<String>,
+    pub skill: String,
+    pub rank: Option<u16>,
+    pub max_rank: Option<u16>,
+    /// True when a recipe cache backs this one, which is what lets the
+    /// coaching rules treat it as a trade skill rather than a name.
+    pub has_recipes: bool,
+}
+
+impl SkillEntry {
+    /// Whether anything here may be turned into advice.
+    ///
+    /// A rank is a fact and applies to every skill. "At its cap, train it" is
+    /// a judgement and applies only to a trade skill — a language sits at
+    /// 300/300 forever and a class tab at 1/1, and no trainer helps with
+    /// either. The recipe cache is the only locale-independent evidence that
+    /// a skill is a trade skill, so without it this stays quiet.
+    pub fn advice_is_safe(&self) -> bool {
+        self.has_recipes
+    }
+
+    pub fn is_capped(&self) -> bool {
+        matches!((self.rank, self.max_rank), (Some(rank), Some(max)) if max > 0 && rank >= max)
+    }
+
+    /// Near enough to the cap to be worth a trainer visit before it blocks.
+    pub fn is_near_cap(&self) -> bool {
+        match (self.rank, self.max_rank) {
+            (Some(rank), Some(max)) if max > 0 && rank < max => {
+                f64::from(max - rank) / f64::from(max) <= 0.1
+            }
+            _ => false,
+        }
+    }
+}
+
 /// A profession somebody on the roster has.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProfessionHolder {
@@ -131,6 +185,9 @@ impl Holding {
 pub struct Economy {
     /// Sorted by profession, then by rank descending.
     pub professions: Vec<ProfessionHolder>,
+    /// Every skill on the roster, grouped by the game's own header. Wider than
+    /// `professions`, and deliberately unjudged.
+    pub skills: Vec<SkillEntry>,
     /// Priced holdings, most valuable first.
     pub holdings: Vec<Holding>,
     /// Held, but Auctionator has never seen it on the auction house. Kept
@@ -205,6 +262,25 @@ pub fn survey(entries: &[RosterEntry<'_>], prices: &PriceDb) -> Economy {
             });
         }
 
+        for skill in record.skills.iter().flatten() {
+            let Some(skill_name) = skill.name.clone() else {
+                continue;
+            };
+            let has_recipes = record
+                .recipes
+                .as_ref()
+                .is_some_and(|recipes| recipes.contains_key(&skill_name));
+            economy.skills.push(SkillEntry {
+                character: name.clone(),
+                role: entry.role,
+                header: skill.header.clone(),
+                skill: skill_name,
+                rank: skill.rank,
+                max_rank: skill.max_rank,
+                has_recipes,
+            });
+        }
+
         let realm_key = auctionator::realm_key(record.realm.as_deref(), record.faction.as_deref());
         if let Some(key) = &realm_key {
             realms_used
@@ -239,6 +315,13 @@ pub fn survey(entries: &[RosterEntry<'_>], prices: &PriceDb) -> Economy {
             None => bags_missing.push(name.clone()),
         }
     }
+
+    economy.skills.sort_by(|a, b| {
+        a.header
+            .cmp(&b.header)
+            .then_with(|| a.character.cmp(&b.character))
+            .then_with(|| a.skill.cmp(&b.skill))
+    });
 
     economy.professions.sort_by(|a, b| {
         a.profession

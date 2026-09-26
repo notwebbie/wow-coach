@@ -7,6 +7,7 @@ pub mod economy;
 pub mod gap;
 pub mod history;
 pub mod lua;
+pub mod quests;
 pub mod roster;
 
 use std::collections::BTreeMap;

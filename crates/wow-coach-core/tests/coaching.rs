@@ -163,6 +163,8 @@ fn a_profession_at_its_cap_is_friction_worth_naming() {
         rank: Some(150),
         max_rank: Some(150),
         skill_id: None,
+        header: None,
+        category_id: None,
     }]);
     // The recipe cache is what proves this is a trade skill rather than a
     // weapon skill or a language, which also sit permanently at cap.
@@ -296,24 +298,32 @@ fn only_actual_trade_skills_raise_the_training_friction() {
             rank: Some(1),
             max_rank: Some(1),
             skill_id: None,
+            header: None,
+            category_id: None,
         },
         Skill {
             name: Some("Language: Orcish".into()),
             rank: Some(300),
             max_rank: Some(300),
             skill_id: None,
+            header: None,
+            category_id: None,
         },
         Skill {
             name: Some("Cloth".into()),
             rank: Some(1),
             max_rank: Some(1),
             skill_id: None,
+            header: None,
+            category_id: None,
         },
         Skill {
             name: Some("Tailoring".into()),
             rank: Some(150),
             max_rank: Some(150),
             skill_id: None,
+            header: None,
+            category_id: None,
         },
     ]);
 

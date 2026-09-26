@@ -275,6 +275,8 @@ fn only_trade_skills_count_as_professions() {
         rank: Some(300),
         max_rank: Some(300),
         skill_id: None,
+        header: None,
+        category_id: None,
     }]);
     let record = with_profession(record, "Tailoring", 225, 225, 12);
 
@@ -581,4 +583,78 @@ fn a_partial_scan_is_not_mistaken_for_a_bad_listing() {
         survey.holdings_value, survey.holdings_value_typical,
         "and nothing is substituted for it"
     );
+}
+
+#[test]
+fn skills_are_all_listed_but_only_trade_skills_earn_advice() {
+    // Listing every skill is the point: a roster with six professions was
+    // showing one, because only a profession whose window had been opened in
+    // game had a recipe cache. But a rank is a fact and "train it" is a
+    // judgement, and the first cut of this printed "Language: Orcish 300/300,
+    // at its cap, needs training" — the exact nonsense the recipe-cache rule
+    // exists to prevent, reintroduced one section further down.
+    let mut record = character("Main", 0, &[]);
+    record.skills = Some(vec![
+        wow_coach_core::collector::Skill {
+            name: Some("Language: Orcish".to_string()),
+            rank: Some(300),
+            max_rank: Some(300),
+            skill_id: None,
+            header: Some("Languages".to_string()),
+            category_id: None,
+        },
+        wow_coach_core::collector::Skill {
+            name: Some("Tailoring".to_string()),
+            rank: Some(225),
+            max_rank: Some(225),
+            skill_id: None,
+            header: Some("Professions".to_string()),
+            category_id: None,
+        },
+    ]);
+    let record = with_profession(record, "Tailoring", 225, 225, 12);
+
+    let records = characters(vec![record]);
+    let entries = roster::roster(&records, &RosterConfig::default());
+    let survey = economy::survey(&entries, &PriceDb::default());
+
+    assert_eq!(survey.skills.len(), 2, "every skill is visible");
+
+    let orcish = survey
+        .skills
+        .iter()
+        .find(|skill| skill.skill.starts_with("Language"))
+        .expect("listed");
+    assert_eq!(orcish.rank, Some(300), "its rank is still a fact");
+    assert!(orcish.is_capped(), "and it is at its maximum");
+    assert!(
+        !orcish.advice_is_safe(),
+        "but nothing may be advised about a skill no trainer serves"
+    );
+
+    let tailoring = survey
+        .skills
+        .iter()
+        .find(|skill| skill.skill == "Tailoring")
+        .expect("listed");
+    assert!(tailoring.advice_is_safe(), "a recipe cache is the evidence");
+    assert!(tailoring.is_capped());
+}
+
+#[test]
+fn a_skill_carries_the_group_the_game_put_it_in() {
+    let mut record = character("Main", 0, &[]);
+    record.skills = Some(vec![wow_coach_core::collector::Skill {
+        name: Some("Daggers".to_string()),
+        rank: Some(34),
+        max_rank: Some(100),
+        skill_id: None,
+        header: Some("Weapon Skills".to_string()),
+        category_id: None,
+    }]);
+    let records = characters(vec![record]);
+    let entries = roster::roster(&records, &RosterConfig::default());
+    let survey = economy::survey(&entries, &PriceDb::default());
+
+    assert_eq!(survey.skills[0].header.as_deref(), Some("Weapon Skills"));
 }

@@ -141,6 +141,28 @@ pub struct Skill {
     /// Forever supplies a stable identifier; the Classic clients do not.
     #[serde(rename = "skillID")]
     pub skill_id: Option<u32>,
+    /// The skill window header this sat under — the game's own grouping.
+    /// Locale-dependent: group by it, never match on it.
+    pub header: Option<String>,
+    /// The same grouping as a number, where the client offers one.
+    #[serde(rename = "categoryID")]
+    pub category_id: Option<u32>,
+}
+
+impl Skill {
+    /// True when the skill is at its cap and cannot advance without training.
+    pub fn is_capped(&self) -> bool {
+        matches!((self.rank, self.max_rank), (Some(rank), Some(max)) if max > 0 && rank >= max)
+    }
+
+    /// How close to the cap, as a fraction. `None` when either end is missing.
+    pub fn fraction(&self) -> Option<f64> {
+        let (rank, max) = (self.rank?, self.max_rank?);
+        if max == 0 {
+            return None;
+        }
+        Some(f64::from(rank) / f64::from(max))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]

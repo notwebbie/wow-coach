@@ -175,18 +175,33 @@ end
 -- display, but those are a transient buff and must not be persisted.
 --------------------------------------------------------------------------------
 
+-- The skill window is a list of headers each followed by its own skills, and
+-- the header is the game's own answer to "what kind of skill is this": a
+-- profession, a weapon skill, a language, an armour proficiency. Discarding it
+-- and trying to work the answer back out — from the name, from whether the
+-- rank looks round — means guessing at something the client already said, in a
+-- way that breaks in every locale but this one.
+--
+-- So the header is recorded verbatim against each skill. It is not
+-- interpreted here and it must not be matched on; it exists so a reader can
+-- group skills the way the player sees them grouped in game.
 local function captureSkills()
     if has("C_SkillInfo.GetNumSkillLines") and has("C_SkillInfo.GetSkillLineInfo") then
-        local skills, complete = {}, true
+        local skills, complete, header = {}, true, nil
         for index = 1, (C_SkillInfo.GetNumSkillLines() or 0) do
             local info = C_SkillInfo.GetSkillLineInfo(index)
             if info then
                 if info.isHeader then
+                    header = info.name
                     if info.isCollapsed then complete = false end
                 elseif info.name and info.rank and info.rank > 0 then
                     skills[#skills + 1] = {
                         name = info.name, rank = info.rank, maxRank = info.maxRank,
-                        skillID = info.skillID,
+                        skillID = info.skillID, header = header,
+                        -- Forever carries a numeric category, which is the
+                        -- same answer without the locale problem. Recorded
+                        -- where it exists; absent everywhere else.
+                        categoryID = info.skillLineCategoryID,
                     }
                 end
             end
@@ -195,14 +210,17 @@ local function captureSkills()
     end
 
     if not GetNumSkillLines or not GetSkillLineInfo then return nil, nil end
-    local skills, complete = {}, true
+    local skills, complete, header = {}, true, nil
     for index = 1, (GetNumSkillLines() or 0) do
         -- name, isHeader, isExpanded, rank, tempPoints, modifier, maxRank, ...
         local name, isHeader, isExpanded, rank, _, _, maxRank = GetSkillLineInfo(index)
         if isHeader then
+            header = name
             if isExpanded == false then complete = false end
         elseif name and rank and rank > 0 then
-            skills[#skills + 1] = { name = name, rank = rank, maxRank = maxRank }
+            skills[#skills + 1] = {
+                name = name, rank = rank, maxRank = maxRank, header = header,
+            }
         end
     end
     return skills, complete

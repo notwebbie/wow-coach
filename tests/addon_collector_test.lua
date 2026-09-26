@@ -66,14 +66,20 @@ function GetBuildInfo() return "2.5.6", "69795", "Sep 12 2026", world.interface 
 -- Skills: header, then two professions. Rank is return 4, maxRank return 7.
 -- numTempPoints (return 5) is non-zero so that a collector which wrongly adds
 -- it, as Blizzard's display code does, produces a detectably wrong rank.
-function GetNumSkillLines() return 3 end
+function GetNumSkillLines() return 5 end
 function GetSkillLineInfo(index)
     if index == 1 then
         return "Professions", true, world.skill_header_expanded, 0, 0, 0, 0
     elseif index == 2 then
         return "Alchemy", false, true, 225, 10, 0, 300
+    elseif index == 3 then
+        return "Herbalism", false, true, 150, 0, 0, 300
+    elseif index == 4 then
+        -- A second header, so the grouping has to actually track which one a
+        -- skill followed rather than tagging everything with the first.
+        return "Weapon Skills", true, true, 0, 0, 0, 0
     end
-    return "Herbalism", false, true, 150, 0, 0, 300
+    return "Daggers", false, true, 100, 0, 0, 100
 end
 
 -- Talents: pointsSpent is return 7 of C_SpecializationInfo.GetSpecializationInfo.
@@ -256,7 +262,16 @@ check(snap.restedXP == 900, "rested xp should be captured")
 check(snap.moneyCopper == 456789, "money should be captured")
 
 -- Skills
-check(snap.skills and #snap.skills == 2, "headers should be excluded from skills")
+check(snap.skills and #snap.skills == 3, "headers should be excluded from skills")
+-- The header is the game's own answer to what kind of skill each one is.
+-- Throwing it away and guessing the answer back from the name works in
+-- English and nowhere else.
+check(snap.skills and snap.skills[1].header == "Professions",
+    "a skill should carry the header it sat under")
+check(snap.skills and snap.skills[3].header == "Weapon Skills",
+    "and the header must track, not stick at the first one seen")
+check(snap.skills and snap.skills[3].name == "Daggers",
+    "the second group's skills should still be captured")
 local alchemy
 for _, skill in ipairs(snap.skills or {}) do
     if skill.name == "Alchemy" then alchemy = skill end
