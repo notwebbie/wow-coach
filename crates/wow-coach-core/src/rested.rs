@@ -42,6 +42,13 @@
 //! Classic's 1.5 levels, is a tenth of the way there. Nothing observed so far
 //! bears on where the bar stops, and the Legacy "Well Rested" perk is expected
 //! to move it.
+//!
+//! The run is archived at `tools/WoWCoachProbe/results/`, and
+//! `cargo run -p wow-coach-core --example rested -- <file>` reproduces the fit
+//! from it. Read it with that rather than by hand: an earlier ad-hoc reading of
+//! the same file silently dropped three samples of twelve, because Lua
+//! serialises table keys in no fixed order and the pattern used had anchored on
+//! one that was not always first.
 
 /// How a number came to be known. The distinction matters more than the value:
 /// a measured rate and an assumed one justify different confidence downstream.
