@@ -46,6 +46,9 @@ pub struct ReagentStatus {
     pub held_by: BTreeMap<String, u32>,
     /// Unit price, when the market has seen one.
     pub unit_price: Option<u64>,
+    /// The middle of this reagent's recent daily prices. One odd listing
+    /// cannot move it, which is the whole point of carrying it alongside.
+    pub typical_price: Option<u64>,
     /// True when this slot accepts several interchangeable items and only the
     /// first was recorded — so a shortfall here may not be a real one.
     pub has_substitutes: bool,
@@ -83,6 +86,14 @@ pub struct Craftable {
     /// `None` when any reagent has no price — a partial total would read as a
     /// cheaper craft than it is.
     pub reagent_cost: Option<u64>,
+    /// The same at each reagent's typical price.
+    ///
+    /// A wrong reagent price does not merely misestimate a craft, it inverts
+    /// the decision — and in the direction nobody checks, because a craft that
+    /// looks unprofitable is simply never made. Live data: an Empty Vial
+    /// listed at 24s against a usual 1s25c made every low-level potion look
+    /// 24 silver worse than it was.
+    pub reagent_cost_typical: Option<u64>,
     /// What it would cost to buy only the pieces the roster does not have.
     pub shortfall_cost: Option<u64>,
     /// How many complete crafts the roster's materials support.
@@ -90,6 +101,54 @@ pub struct Craftable {
 }
 
 impl Craftable {
+    /// Output value less reagent cost at each reagent's typical price.
+    pub fn margin_typical(&self) -> Option<i64> {
+        match (self.output_value, self.reagent_cost_typical) {
+            (Some(value), Some(cost)) => Some(value as i64 - cost as i64),
+            _ => None,
+        }
+    }
+
+    /// True when costing at typical prices rather than last seen ones flips
+    /// the answer from profit to loss or back.
+    ///
+    /// This is the test that matters, and it needs no threshold to argue
+    /// about: a price is only misleading here if it changes what a reader
+    /// would do. A craft that is unprofitable either way does not need a
+    /// warning, however far the prices have moved.
+    pub fn price_uncertainty_flips_the_answer(&self) -> bool {
+        match (self.margin(), self.margin_typical()) {
+            (Some(seen), Some(typical)) => (seen >= 0) != (typical >= 0),
+            _ => false,
+        }
+    }
+
+    /// The reagents whose last seen price is out of line with their own
+    /// history, worst first — the ones carrying the disagreement.
+    pub fn suspect_reagents(&self) -> Vec<&ReagentStatus> {
+        let mut found: Vec<&ReagentStatus> = self
+            .reagents
+            .iter()
+            .filter(
+                |reagent| match (reagent.unit_price, reagent.typical_price) {
+                    (Some(seen), Some(typical)) if typical > 0 => {
+                        seen as f64 / typical as f64 >= 2.0
+                    }
+                    _ => false,
+                },
+            )
+            .collect();
+        found.sort_by(|a, b| {
+            let ratio = |r: &ReagentStatus| {
+                r.unit_price.unwrap_or(0) as f64 / r.typical_price.unwrap_or(1).max(1) as f64
+            };
+            ratio(b)
+                .partial_cmp(&ratio(a))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        found
+    }
+
     /// Output value less reagent cost, when both are known.
     ///
     /// Negative is a real and common answer: on a healthy auction house most
@@ -228,12 +287,14 @@ fn assess(
     // often as its scarcest input allows.
     let mut can_make = u32::MAX;
     let mut cost: Option<u64> = Some(0);
+    let mut cost_typical: Option<u64> = Some(0);
     let mut shortfall: Option<u64> = Some(0);
 
     for reagent in reagents {
         let (Some(item_id), Some(needed)) = (reagent.item_id, reagent.count) else {
             // A reagent we cannot identify makes every count below a guess.
             cost = None;
+            cost_typical = None;
             shortfall = None;
             can_make = 0;
             continue;
@@ -241,9 +302,12 @@ fn assess(
         let needed = needed.max(1);
         let holding = held.get(&(market.clone(), item_id));
         let count = holding.map_or(0, |holding| holding.count);
-        let unit_price = realm
-            .and_then(|realm| realm.for_item(item_id))
+        let prices = realm.and_then(|realm| realm.for_item(item_id));
+        let unit_price = prices
             .and_then(|prices| prices.last_seen_min)
+            .filter(|price| *price > 0);
+        let typical_price = prices
+            .and_then(|prices| prices.typical())
             .filter(|price| *price > 0);
 
         can_make = can_make.min(count / needed);
@@ -264,6 +328,17 @@ fn assess(
             }
         }
 
+        // The typical-price total falls back to the last seen price where
+        // there is no history, so both totals cover the same reagents and can
+        // honestly be compared.
+        match typical_price.or(unit_price) {
+            Some(price) => {
+                cost_typical = cost_typical
+                    .map(|total| total.saturating_add(price.saturating_mul(u64::from(needed))));
+            }
+            None => cost_typical = None,
+        }
+
         statuses.push(ReagentStatus {
             item_id,
             name: reagent
@@ -276,6 +351,7 @@ fn assess(
                 .map(|holding| holding.held_by.clone())
                 .unwrap_or_default(),
             unit_price,
+            typical_price,
             has_substitutes: reagent.choices.is_some_and(|choices| choices > 1),
         });
     }
@@ -306,6 +382,7 @@ fn assess(
         output_value: output_unit
             .map(|price| price.saturating_mul(u64::from(output_count.unwrap_or(1)))),
         reagent_cost: cost,
+        reagent_cost_typical: cost_typical,
         shortfall_cost: shortfall,
         can_make_now: if can_make == u32::MAX { 0 } else { can_make },
         reagents: statuses,
@@ -350,6 +427,31 @@ fn caveats(plan: &CraftPlan, without_reagents: usize, considered: usize) -> Vec<
             "Some recipes accept interchangeable reagents and only the first was recorded, so a shortfall on those may not be real."
                 .to_string(),
         );
+    }
+
+    let flipped: Vec<&Craftable> = plan
+        .ready
+        .iter()
+        .chain(&plan.worth_shopping_for)
+        .filter(|craftable| craftable.price_uncertainty_flips_the_answer())
+        .collect();
+    if !flipped.is_empty() {
+        let mut blamed: Vec<&str> = flipped
+            .iter()
+            .flat_map(|craftable| craftable.suspect_reagents())
+            .filter_map(|reagent| reagent.name.as_deref())
+            .collect();
+        blamed.sort_unstable();
+        blamed.dedup();
+        caveats.push(format!(
+            "{} craft(s) turn from profit to loss, or back, depending on whether their reagents are costed at the last seen price or the usual one{}. An oddly priced reagent does not merely skew the figure — it reverses the decision, in the direction nobody checks, because a craft that looks unprofitable is simply never made.",
+            flipped.len(),
+            if blamed.is_empty() {
+                String::new()
+            } else {
+                format!(" — {}", blamed.join(", "))
+            }
+        ));
     }
 
     if plan

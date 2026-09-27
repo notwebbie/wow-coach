@@ -234,6 +234,19 @@ fn one_unpriced_reagent_makes_the_whole_cost_unknown() {
     assert!(brew.is_makeable(), "it can still be made");
     assert_eq!(brew.reagent_cost, None, "but not costed");
     assert_eq!(brew.margin(), None, "and so not valued");
+    // The typical-price total has to fail the same way. A partial total there
+    // would read as a cheaper craft just as surely, and it is the figure the
+    // flip test compares against — so a hole in it would quietly reverse the
+    // very decision that comparison exists to protect.
+    assert_eq!(
+        brew.reagent_cost_typical, None,
+        "an unpriced reagent leaves no honest typical total either"
+    );
+    assert_eq!(brew.margin_typical(), None);
+    assert!(
+        !brew.price_uncertainty_flips_the_answer(),
+        "and nothing can be said about a flip with no totals to compare"
+    );
     assert!(
         plan.caveats
             .iter()
@@ -384,4 +397,143 @@ fn a_recipe_with_no_output_item_is_still_reported_as_makeable() {
         "nothing to sell is not a margin of zero"
     );
     assert_eq!(enchant.reagent_cost, Some(600));
+}
+
+/// The holdings the economy survey would produce for these characters.
+fn holdings_for(
+    records: &BTreeMap<String, CharacterRecord>,
+    prices: &PriceDb,
+) -> Vec<economy::Holding> {
+    let entries = roster::roster(records, &RosterConfig::default());
+    let survey = economy::survey(&entries, prices);
+    survey
+        .holdings
+        .iter()
+        .chain(&survey.unpriced)
+        .cloned()
+        .collect()
+}
+
+/// One item's price: its id, what was last seen, and its daily history.
+type PricedItem<'a> = (u32, u64, &'a [(i64, u64)]);
+
+/// Prices where the last seen figure disagrees with the item's own history.
+fn prices_with_history(realm: &str, entries: &[PricedItem<'_>]) -> PriceDb {
+    let items = entries
+        .iter()
+        .map(|(item_id, last, history)| {
+            (
+                item_id.to_string(),
+                ItemPrices {
+                    last_seen_min: Some(*last),
+                    high: history.iter().copied().collect(),
+                    low: BTreeMap::new(),
+                    available: BTreeMap::new(),
+                },
+            )
+        })
+        .collect();
+    PriceDb {
+        realms: [(realm.to_string(), RealmPrices { items })]
+            .into_iter()
+            .collect(),
+        vendor: BTreeMap::new(),
+        notes: Vec::new(),
+    }
+}
+
+#[test]
+fn one_odd_reagent_price_must_not_silently_reverse_the_answer() {
+    // Live data, 28 September: an Empty Vial listed at 24s87c against a usual
+    // 1s25c made every low-level potion look about 24 silver worse than it
+    // was. A wrong reagent price does not merely skew a figure — it inverts
+    // the decision, and in the direction nobody checks, because a craft that
+    // looks unprofitable is simply never made.
+    let records = characters(vec![with_recipes(
+        character("Alch", "Horde", &[(2447, 10), (3371, 10)]),
+        "Alchemy",
+        vec![recipe("Potion", &[(2447, 1), (3371, 1)], Some(118), 1)],
+    )]);
+    let entries = roster::roster(&records, &RosterConfig::default());
+
+    let prices = prices_with_history(
+        HORDE,
+        &[
+            // Herb: steady.
+            (2447, 8, &[(2458, 9), (2459, 9), (2460, 8)]),
+            // Vial: one listing twenty times its usual price.
+            (3371, 2487, &[(2458, 120), (2459, 131), (2460, 2487)]),
+            // The potion sells for well over its usual reagent cost.
+            (118, 400, &[(2458, 380), (2459, 400), (2460, 400)]),
+        ],
+    );
+    let plan = crafting::plan(&entries, &holdings_for(&records, &prices), &prices);
+
+    let potion = &plan.ready[0];
+    assert_eq!(potion.reagent_cost, Some(2495), "what was last seen");
+    assert_eq!(
+        potion.reagent_cost_typical,
+        Some(140),
+        "what it usually costs"
+    );
+    assert!(
+        potion.margin().unwrap() < 0,
+        "looks like a loss at last seen prices"
+    );
+    assert!(
+        potion.margin_typical().unwrap() > 0,
+        "and a profit at usual ones"
+    );
+    assert!(
+        potion.price_uncertainty_flips_the_answer(),
+        "which is exactly the case worth warning about"
+    );
+
+    let suspect = potion.suspect_reagents();
+    assert_eq!(suspect.len(), 1, "only the vial is out of line");
+    assert_eq!(suspect[0].item_id, 3371);
+
+    assert!(
+        plan.caveats
+            .iter()
+            .any(|caveat| caveat.contains("reverses the decision")),
+        "{:?}",
+        plan.caveats
+    );
+}
+
+#[test]
+fn a_craft_that_loses_money_either_way_needs_no_warning() {
+    // The test is whether the answer changes, not whether the prices moved.
+    // Warning about a craft that is unprofitable on any costing would be the
+    // crying-wolf failure this rule exists to avoid.
+    let records = characters(vec![with_recipes(
+        character("Alch", "Horde", &[(2447, 10), (3371, 10)]),
+        "Alchemy",
+        vec![recipe("Bad Potion", &[(2447, 1), (3371, 1)], Some(118), 1)],
+    )]);
+    let entries = roster::roster(&records, &RosterConfig::default());
+
+    let prices = prices_with_history(
+        HORDE,
+        &[
+            (2447, 8, &[(2459, 9), (2460, 8)]),
+            (3371, 2487, &[(2459, 131), (2460, 2487)]),
+            // Sells for 6 copper. Nothing makes this worth doing.
+            (118, 6, &[(2459, 11), (2460, 6)]),
+        ],
+    );
+    let plan = crafting::plan(&entries, &holdings_for(&records, &prices), &prices);
+
+    let potion = &plan.ready[0];
+    assert!(potion.margin().unwrap() < 0);
+    assert!(potion.margin_typical().unwrap() < 0);
+    assert!(
+        !potion.price_uncertainty_flips_the_answer(),
+        "a loss either way is not a warning"
+    );
+    assert!(!plan
+        .caveats
+        .iter()
+        .any(|caveat| caveat.contains("reverses the decision")));
 }

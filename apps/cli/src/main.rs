@@ -1588,6 +1588,32 @@ fn show_craft(
                     truncate(&reagent_holders(reagent), 34),
                 );
             }
+            if craftable.price_uncertainty_flips_the_answer() {
+                let blamed: Vec<String> = craftable
+                    .suspect_reagents()
+                    .iter()
+                    .map(|reagent| {
+                        format!(
+                            "{} at {} vs a usual {}",
+                            reagent_label(reagent),
+                            money(reagent.unit_price.unwrap_or(0)),
+                            money(reagent.typical_price.unwrap_or(0)),
+                        )
+                    })
+                    .collect();
+                println!(
+                    "      at usual reagent prices this is {} — {}",
+                    craftable
+                        .margin_typical()
+                        .map(|margin| if margin >= 0 {
+                            format!("+{}", money(margin as u64))
+                        } else {
+                            format!("-{}", money(margin.unsigned_abs()))
+                        })
+                        .unwrap_or_else(dash),
+                    truncate(&blamed.join(", "), 60),
+                );
+            }
         }
         if plan.ready.len() > limit {
             println!(
@@ -1666,11 +1692,19 @@ fn reagent_holders(reagent: &crafting::ReagentStatus) -> String {
 
 /// The margin, or an honest statement of why there isn't one.
 fn margin_text(craftable: &crafting::Craftable) -> String {
-    match craftable.margin() {
+    let base = match craftable.margin() {
         Some(margin) if margin >= 0 => format!("+{}", money(margin as u64)),
         Some(margin) => format!("-{}", money(margin.unsigned_abs())),
-        None if craftable.output_item_id.is_none() => "no item made".to_string(),
-        None => "not priced".to_string(),
+        None if craftable.output_item_id.is_none() => return "no item made".to_string(),
+        None => return "not priced".to_string(),
+    };
+    // Marked where it is read, not only in a note at the bottom. A craft whose
+    // sign depends on which price you believe is the one case where the figure
+    // alone actively misleads.
+    if craftable.price_uncertainty_flips_the_answer() {
+        format!("{base}?")
+    } else {
+        base
     }
 }
 
