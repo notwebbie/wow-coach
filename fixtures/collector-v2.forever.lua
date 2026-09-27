@@ -96,12 +96,14 @@ WoWCoachCollectorDB = {
 			["schemaVersion"] = 2,
 			["skills"] = {
 				{
+					["header"] = "Professions",
 					["maxRank"] = 300,
 					["name"] = "Alchemy",
 					["rank"] = 225,
 					["skillID"] = 171,
 				},
 				{
+					["header"] = "Professions",
 					["maxRank"] = 300,
 					["name"] = "Herbalism",
 					["rank"] = 150,

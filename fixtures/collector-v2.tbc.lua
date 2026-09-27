@@ -26,6 +26,7 @@ WoWCoachCollectorDB = {
 					{
 						["count"] = 32,
 						["itemID"] = 2589,
+						["name"] = "Linen Cloth",
 					},
 					{
 						["count"] = 5,
@@ -68,12 +69,37 @@ WoWCoachCollectorDB = {
 					["recipes"] = {
 						{
 							["difficulty"] = "optimal",
+							["makesItemID"] = 3825,
+							["makesMax"] = 1,
+							["makesMin"] = 1,
 							["name"] = "Elixir of Fortitude",
+							["reagents"] = {
+								{
+									["count"] = 1,
+									["itemID"] = 3356,
+									["name"] = "Goldthorn",
+								},
+								{
+									["count"] = 2,
+									["itemID"] = 3820,
+									["name"] = "Stranglekelp",
+								},
+							},
 							["spellID"] = 11452,
 						},
 						{
 							["difficulty"] = "trivial",
+							["makesItemID"] = 929,
+							["makesMax"] = 2,
+							["makesMin"] = 1,
 							["name"] = "Healing Potion",
+							["reagents"] = {
+								{
+									["count"] = 1,
+									["itemID"] = 2447,
+									["name"] = "Peacebloom",
+								},
+							},
 							["spellID"] = 11453,
 						},
 					},
@@ -86,6 +112,13 @@ WoWCoachCollectorDB = {
 						{
 							["difficulty"] = "easy",
 							["name"] = "Enchant Bracer - Minor Health",
+							["reagents"] = {
+								{
+									["count"] = 3,
+									["itemID"] = 10940,
+									["name"] = "Strange Dust",
+								},
+							},
 							["spellID"] = 7420,
 						},
 					},
@@ -95,14 +128,22 @@ WoWCoachCollectorDB = {
 			["schemaVersion"] = 2,
 			["skills"] = {
 				{
+					["header"] = "Professions",
 					["maxRank"] = 300,
 					["name"] = "Alchemy",
 					["rank"] = 225,
 				},
 				{
+					["header"] = "Professions",
 					["maxRank"] = 300,
 					["name"] = "Herbalism",
 					["rank"] = 150,
+				},
+				{
+					["header"] = "Weapon Skills",
+					["maxRank"] = 100,
+					["name"] = "Daggers",
+					["rank"] = 100,
 				},
 			},
 			["skillsComplete"] = false,

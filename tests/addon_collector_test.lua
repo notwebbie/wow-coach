@@ -123,6 +123,14 @@ function C_Container.GetContainerItemInfo(bag, slot)
     return { itemID = entry[1], stackCount = entry[2] }
 end
 function C_Container.ContainerIDToInventoryID(bag) return 19 + bag end
+-- Item names come from the client's cache and are absent for anything it has
+-- not loaded. Only one of the two stacks is known here, which is the normal
+-- state rather than an edge case.
+C_Item = C_Item or {}
+function C_Item.GetItemInfo(itemID)
+    if itemID == 2589 then return "Linen Cloth" end
+    return nil
+end
 function GetInventoryItemID(unit, slot) assert(unit == "player") return 4000 + slot end
 
 -- Trade skill and craft.
@@ -262,6 +270,20 @@ check(snap.restedXP == 900, "rested xp should be captured")
 check(snap.moneyCopper == 456789, "money should be captured")
 
 -- Skills
+-- A name is a convenience; the id is the fact. An item the client has not
+-- loaded is written without one rather than delaying or failing the capture,
+-- and that is the common case at logout, not a rare one.
+local stacks = snap.inventory and snap.inventory.contents
+local named, nameless
+for _, stack in ipairs(stacks or {}) do
+    if stack.itemID == 2589 then named = stack end
+    if stack.itemID == 2592 then nameless = stack end
+end
+check(named and named.name == "Linen Cloth", "a cached item should carry its name")
+check(nameless and nameless.name == nil,
+    "an item the client has not loaded must be written without a name, not with a placeholder")
+check(nameless and nameless.itemID == 2592, "and its id is still the fact")
+
 check(snap.skills and #snap.skills == 3, "headers should be excluded from skills")
 -- The header is the game's own answer to what kind of skill each one is.
 -- Throwing it away and guessing the answer back from the name works in
