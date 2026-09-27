@@ -33,6 +33,7 @@
 use std::collections::BTreeMap;
 
 use crate::auctionator::{self, PriceDb, RealmPrices};
+use crate::collector::ItemStack;
 use crate::roster::{Role, RosterEntry};
 
 /// One character's skill, as the game grouped it.
@@ -108,6 +109,30 @@ impl ProfessionHolder {
     }
 }
 
+/// What one character holds of one item, and where.
+///
+/// The split is not bookkeeping. Reagents in bags can be used now; reagents in
+/// a bank require a trip to the bank, and on a different character a trip to
+/// the mailbox as well. Both are genuinely held, so both count toward "can I
+/// make this" — but a reader told only the total cannot tell a craft it can
+/// start from one it has half an hour of errands ahead of.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct HeldAmount {
+    pub bags: u32,
+    pub bank: u32,
+}
+
+impl HeldAmount {
+    pub fn total(&self) -> u32 {
+        self.bags.saturating_add(self.bank)
+    }
+
+    /// True when getting at this needs a trip to the bank.
+    pub fn needs_a_trip(&self) -> bool {
+        self.bank > 0
+    }
+}
+
 /// One item in one market, totalled across everyone there holding it.
 ///
 /// **Market, not item, is the unit.** Horde and Alliance run separate auction
@@ -125,8 +150,8 @@ pub struct Holding {
     /// The client's own name for it, when the capture had one. Never a key.
     pub name: Option<String>,
     pub count: u32,
-    /// Character name to the count it holds, so the player knows where to go.
-    pub held_by: BTreeMap<String, u32>,
+    /// Character name to what it holds, so the player knows where to go.
+    pub held_by: BTreeMap<String, HeldAmount>,
     /// Last seen minimum buyout per unit, in copper.
     pub unit_price: Option<u64>,
     /// The middle of the recent daily prices, which one odd listing cannot
@@ -225,11 +250,12 @@ impl Economy {
 pub fn survey(entries: &[RosterEntry<'_>], prices: &PriceDb) -> Economy {
     let mut economy = Economy::default();
     // Keyed by market first: see `Holding`.
-    let mut stacks: BTreeMap<(Option<String>, u32), BTreeMap<String, u32>> = BTreeMap::new();
+    let mut stacks: BTreeMap<(Option<String>, u32), BTreeMap<String, HeldAmount>> = BTreeMap::new();
     let mut item_names: BTreeMap<u32, String> = BTreeMap::new();
     let mut realms_used: BTreeMap<String, Option<&RealmPrices>> = BTreeMap::new();
     let mut counted = 0usize;
     let mut bags_missing = Vec::new();
+    let mut banks_missing = Vec::new();
 
     for entry in entries {
         if !entry.role.in_economy() {
@@ -288,31 +314,50 @@ pub fn survey(entries: &[RosterEntry<'_>], prices: &PriceDb) -> Economy {
                 .or_insert_with(|| prices.realms.get(key));
         }
 
+        // Bags and bank are accumulated through the same closure so the two
+        // can never drift in how they are counted — only in which field of
+        // `HeldAmount` they land in.
+        let mut take = |contents: &[ItemStack], into_bank: bool| {
+            for stack in contents {
+                let (Some(item_id), Some(count)) = (stack.item_id, stack.count) else {
+                    continue;
+                };
+                let held = stacks
+                    .entry((realm_key.clone(), item_id))
+                    .or_default()
+                    .entry(name.clone())
+                    .or_default();
+                if into_bank {
+                    held.bank = held.bank.saturating_add(count);
+                } else {
+                    held.bags = held.bags.saturating_add(count);
+                }
+                if let Some(item_name) = stack.name.as_deref() {
+                    // A name is display only, so the first one wins and it
+                    // is shared across markets. The id remains the key.
+                    item_names
+                        .entry(item_id)
+                        .or_insert_with(|| item_name.to_string());
+                }
+            }
+        };
+
         match record
             .inventory
             .as_ref()
             .and_then(|bags| bags.contents.as_ref())
         {
-            Some(contents) => {
-                for stack in contents {
-                    let (Some(item_id), Some(count)) = (stack.item_id, stack.count) else {
-                        continue;
-                    };
-                    *stacks
-                        .entry((realm_key.clone(), item_id))
-                        .or_default()
-                        .entry(name.clone())
-                        .or_insert(0) += count;
-                    if let Some(item_name) = stack.name.as_deref() {
-                        // A name is display only, so the first one wins and it
-                        // is shared across markets. The id remains the key.
-                        item_names
-                            .entry(item_id)
-                            .or_insert_with(|| item_name.to_string());
-                    }
-                }
-            }
+            Some(contents) => take(contents, false),
             None => bags_missing.push(name.clone()),
+        }
+
+        // An absent bank is the normal case, not a fault: it means nobody has
+        // stood this character at a banker since the addon was installed. It
+        // is reported so the player knows the figure is a floor rather than a
+        // total, which is a different claim from the bags being unreadable.
+        match record.bank.as_ref().and_then(|bank| bank.contents.as_ref()) {
+            Some(contents) => take(contents, true),
+            None => banks_missing.push(name.clone()),
         }
     }
 
@@ -331,7 +376,7 @@ pub fn survey(entries: &[RosterEntry<'_>], prices: &PriceDb) -> Economy {
     });
 
     for ((market, item_id), held_by) in stacks {
-        let count: u32 = held_by.values().copied().sum();
+        let count: u32 = held_by.values().map(HeldAmount::total).sum();
         let realm = market.as_ref().and_then(|key| prices.realms.get(key));
         let item = realm.and_then(|realm| realm.for_item(item_id));
         let unit_price = item
@@ -398,7 +443,13 @@ pub fn survey(entries: &[RosterEntry<'_>], prices: &PriceDb) -> Economy {
         })
         .fold(0u64, u64::saturating_add);
 
-    economy.caveats = caveats(counted, &realms_used, &bags_missing, &economy);
+    economy.caveats = caveats(
+        counted,
+        &realms_used,
+        &bags_missing,
+        &banks_missing,
+        &economy,
+    );
     economy
 }
 
@@ -406,6 +457,7 @@ fn caveats(
     counted: usize,
     realms_used: &BTreeMap<String, Option<&RealmPrices>>,
     bags_missing: &[String],
+    banks_missing: &[String],
     economy: &Economy,
 ) -> Vec<String> {
     let mut caveats = Vec::new();
@@ -431,6 +483,16 @@ fn caveats(
         caveats.push(format!(
             "Bag contents were not captured for {}, so nothing they hold is counted.",
             bags_missing.join(", ")
+        ));
+    }
+
+    // Worth saying even though it is the ordinary state of a fresh install.
+    // Every total below is a floor, and a floor presented as a total is how a
+    // player ends up buying reagents they already own.
+    if !banks_missing.is_empty() {
+        caveats.push(format!(
+            "The bank has never been seen for {}. Stand each at a banker once and open it — until then these totals are a floor, not a count.",
+            banks_missing.join(", ")
         ));
     }
 

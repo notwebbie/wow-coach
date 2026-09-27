@@ -132,11 +132,17 @@ local function bagItemID(bag)
     return GetInventoryItemID("player", inventorySlot)
 end
 
-local function captureBags()
+-- Walk a list of container ids and total up what is in them.
+--
+-- Shared by the bag and bank captures, because the two differ only in which
+-- containers they read and in when reading them is valid. Returns nil when no
+-- container answered at all, which is what separates "could not look" from
+-- "looked, and it was empty".
+local function captureContainers(ids)
     local bags, items = {}, {}
     local totalSlots, freeSlots, sawAnyBag = 0, 0, false
 
-    for bag = 0, 4 do
+    for _, bag in ipairs(ids) do
         local slots = containerNumSlots(bag)
         if slots and slots > 0 then
             sawAnyBag = true
@@ -161,6 +167,36 @@ local function captureBags()
     table.sort(contents, function(a, b) return a.itemID < b.itemID end)
 
     return { bags = bags, totalSlots = totalSlots, freeSlots = freeSlots, contents = contents }
+end
+
+local BAG_IDS = { 0, 1, 2, 3, 4 }
+
+-- The bank: the main window (-1), the seven purchasable bag slots (5..11), and
+-- the reagent bank (-3) on clients that have one. A container the client does
+-- not have reports no slots, so naming one here costs nothing and a client
+-- that grows one is captured without an addon update.
+local BANK_IDS = { -1, -3, 5, 6, 7, 8, 9, 10, 11 }
+
+local function captureBags()
+    return captureContainers(BAG_IDS)
+end
+
+-- The bank, which is only readable while its window is open.
+--
+-- Away from a banker these calls do not fail. They answer emptily, and an
+-- empty answer stored as a fact reads as "this character owns nothing" — which
+-- would wipe a real holding every time the player logged in somewhere else.
+-- That is the same shape as the logout bug: a value read at a moment the
+-- client cannot supply it is not a measurement.
+--
+-- So the caller gates this on the bank frame being open, and the snapshot
+-- carries the time it was taken. A bank seen last Tuesday is still the best
+-- information anyone has; it simply has to say so rather than pass for current.
+local function captureBank()
+    local bank = captureContainers(BANK_IDS)
+    if not bank then return nil end
+    bank.capturedAt = time()
+    return bank
 end
 
 --------------------------------------------------------------------------------
@@ -732,6 +768,21 @@ function collector.capture()
     if pet then record.pet = pet end
 end
 
+-- Record what is in the bank, and only ever when the window is open.
+--
+-- Deliberately never clears `record.bank`. The last good look is kept until a
+-- better one replaces it, because the alternative — forgetting a mule's
+-- contents the moment the player walks away from the banker — makes the
+-- feature useless for exactly the character it exists to serve.
+function collector.captureBank()
+    local record = currentRecord()
+    if not record then return end
+
+    local bank = captureBank()
+    if not bank then return end
+    record.bank = bank
+end
+
 function collector.captureRecipes()
     local record = currentRecord()
     if not record then return end
@@ -768,8 +819,21 @@ local RECIPE_EVENTS = {
     "CRAFT_SHOW", "CRAFT_UPDATE",
 }
 
+-- Bank events, handled apart from the snapshot because they are the only
+-- window in which the bank can be read at all. BANKFRAME_CLOSED is registered
+-- to close that window, not to capture: reading after it would produce the
+-- empty answer this whole path exists to avoid.
+local BANK_EVENTS = {
+    "BANKFRAME_OPENED", "BANKFRAME_CLOSED",
+    "PLAYERBANKSLOTS_CHANGED", "PLAYERBANKBAGSLOTS_CHANGED",
+    "PLAYERREAGENTBANKSLOTS_CHANGED",
+}
+
 local recipeEvent = {}
 for _, event in ipairs(RECIPE_EVENTS) do recipeEvent[event] = true end
+
+local bankEvent = {}
+for _, event in ipairs(BANK_EVENTS) do bankEvent[event] = true end
 
 -- Registering an event the client does not have raises an error, so each one is
 -- attempted individually. A client missing an event loses that trigger, never
@@ -779,12 +843,29 @@ local function register(event)
 end
 for _, event in ipairs(SNAPSHOT_EVENTS) do register(event) end
 for _, event in ipairs(RECIPE_EVENTS) do register(event) end
+for _, event in ipairs(BANK_EVENTS) do register(event) end
 
 local pending, sinceFlush = false, 0
+-- Whether the bank window is open, and so whether the bank can be read.
+local bankIsOpen = false
 
 frame:SetScript("OnEvent", function(_, event, unit)
     if recipeEvent[event] then
         collector.captureRecipes()
+        return
+    end
+    if bankEvent[event] then
+        if event == "BANKFRAME_CLOSED" then
+            bankIsOpen = false
+            return
+        end
+        -- Only the frame opening proves the bank is readable. A slot-changed
+        -- event can fire when it is not — moving a stack while the window is
+        -- shut, for one — and reading then returns the empty answer that would
+        -- erase a real holding. So the flag gates, and the slot events only
+        -- refresh a bank already known to be open.
+        if event == "BANKFRAME_OPENED" then bankIsOpen = true end
+        if bankIsOpen then collector.captureBank() end
         return
     end
     -- PLAYER_XP_UPDATE carries the unit that changed; ignore everyone else.

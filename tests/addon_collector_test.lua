@@ -103,21 +103,39 @@ function GetQuestLogTitle(index)
     return "Failed Errand", 60, nil, false, false, -1, 0, 9441
 end
 
--- Containers: backpack plus one bag. Modern C_Container only; the globals are
--- absent, matching the 2.5.x client.
-local bag_slots = { [0] = 16, [1] = 6 }
+-- Containers: backpack plus one bag, and a bank behind them. Modern
+-- C_Container only; the globals are absent, matching the 2.5.x client.
+--
+-- `bank_open` models the one property that makes the bank unlike the bags, and
+-- it models the nastier half of it deliberately. Away from a banker the client
+-- still knows how big the bank is, so the slot count comes back correct and
+-- only the items come back nil — the bank looks present and empty rather than
+-- absent. A stub that returned "no slots" when shut would be the easy case and
+-- would let a broken guard pass, so this one reproduces the trap: slots yes,
+-- contents no.
+local bank_open = false
+local bag_slots = { [0] = 16, [1] = 6, [-1] = 24, [5] = 16 }
 local bag_items = {
     [0] = { [1] = { 2589, 20 }, [2] = { 2592, 5 } },
     [1] = { [1] = { 2589, 12 } },
+    [-1] = { [1] = { 2589, 100 }, [2] = { 2772, 40 } },
+    [5] = { [1] = { 2772, 20 } },
 }
+local function is_bank(bag) return bag == -1 or bag == -3 or (bag >= 5 and bag <= 11) end
+local function readable(bag) return bank_open or not is_bank(bag) end
 C_Container = {}
+-- The size is known whether or not the window is open.
 function C_Container.GetContainerNumSlots(bag) return bag_slots[bag] or 0 end
 function C_Container.GetContainerNumFreeSlots(bag)
+    local slots = bag_slots[bag] or 0
+    if not readable(bag) then return slots, 0 end
     local used = 0
     for _ in pairs(bag_items[bag] or {}) do used = used + 1 end
-    return (bag_slots[bag] or 0) - used, 0
+    return slots - used, 0
 end
+-- The contents are not.
 function C_Container.GetContainerItemInfo(bag, slot)
+    if not readable(bag) then return nil end
     local entry = (bag_items[bag] or {})[slot]
     if not entry then return nil end
     return { itemID = entry[1], stackCount = entry[2] }
@@ -334,6 +352,60 @@ for _, item in ipairs(snap.inventory and snap.inventory.contents or {}) do
     if item.itemID == 2589 then linen = item end
 end
 check(linen and linen.count == 32, "stacks of one item must be summed across bags")
+check(snap.inventory and snap.inventory.contents and #snap.inventory.contents == 2,
+    "the bag capture must not reach into the bank")
+
+--------------------------------------------------------------------------------
+-- Bank
+--
+-- The bank is only readable at a banker, so every assertion here is really
+-- about when the addon looks, not about what it finds.
+--------------------------------------------------------------------------------
+
+check(record().bank == nil, "the bank must not be captured by an ordinary snapshot")
+
+-- A slot-changed event away from the bank must not be taken as permission to
+-- read. This is the case that would silently erase a mule's contents.
+frame:Fire("PLAYERBANKSLOTS_CHANGED")
+check(record().bank == nil, "a slot event alone must not be read as the bank being open")
+
+bank_open = true
+frame:Fire("BANKFRAME_OPENED")
+local bank = record().bank
+check(bank ~= nil, "opening the bank must capture it")
+check(bank and bank.totalSlots == 40, "bank slots should sum the main window and its bags")
+check(bank and bank.capturedAt ~= nil, "a bank snapshot must record when it was taken")
+local banked_linen, banked_wool
+for _, item in ipairs(bank and bank.contents or {}) do
+    if item.itemID == 2589 then banked_linen = item end
+    if item.itemID == 2772 then banked_wool = item end
+end
+check(banked_linen and banked_linen.count == 100, "bank contents should be captured")
+check(banked_wool and banked_wool.count == 60, "stacks must be summed across bank bags")
+
+-- Closing the bank must not discard what was seen. Forgetting a mule's
+-- contents the moment the player walks away would make the capture useless for
+-- the one character it exists to serve.
+frame:Fire("BANKFRAME_CLOSED")
+bank_open = false
+frame:Fire("PLAYERBANKSLOTS_CHANGED")
+check(record().bank ~= nil, "the last good bank look must survive the window closing")
+-- Checking the contents, not the slot count: a reading taken with the bank
+-- shut reports the right size and nothing in it, so a size assertion would
+-- pass while the holding was erased. That is the failure this guards.
+check(record().bank and record().bank.contents and #record().bank.contents == 2,
+    "and must not be overwritten by a reading taken with the bank shut")
+
+-- A client with no bank at all must leave the last good look alone rather than
+-- replace it with nothing.
+local saved_slots = bag_slots
+bag_slots = { [0] = 16, [1] = 6 }
+bank_open = true
+frame:Fire("BANKFRAME_OPENED")
+check(record().bank and record().bank.contents and #record().bank.contents == 2,
+    "a bank that reports no containers must not erase what was already seen")
+bag_slots = saved_slots
+bank_open = false
 
 --------------------------------------------------------------------------------
 -- Throttling

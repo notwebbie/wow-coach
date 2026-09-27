@@ -8,10 +8,11 @@ use std::collections::BTreeMap;
 
 use wow_coach_core::auctionator::{ItemPrices, PriceDb, RealmPrices};
 use wow_coach_core::collector::{
-    CharacterRecord, Inventory, ItemStack, ProfessionRecipes, Reagent, Recipe,
+    Bank, CharacterRecord, Inventory, ItemStack, ProfessionRecipes, Reagent, Recipe,
 };
 use wow_coach_core::crafting;
 use wow_coach_core::economy;
+use wow_coach_core::economy::HeldAmount;
 use wow_coach_core::roster::{self, Role, RosterConfig};
 
 const HORDE: &str = "Dreamscythe Horde";
@@ -40,6 +41,31 @@ fn character(name: &str, faction: &str, stacks: &[(u32, u32)]) -> CharacterRecor
         }),
         ..Default::default()
     }
+}
+
+/// The same character, with `banked` sitting in the bank as of `captured_at`.
+fn with_bank(
+    mut record: CharacterRecord,
+    banked: &[(u32, u32)],
+    captured_at: i64,
+) -> CharacterRecord {
+    record.bank = Some(Bank {
+        bags: Some(Vec::new()),
+        total_slots: Some(28),
+        free_slots: Some(20),
+        contents: Some(
+            banked
+                .iter()
+                .map(|(item_id, count)| ItemStack {
+                    item_id: Some(*item_id),
+                    count: Some(*count),
+                    name: None,
+                })
+                .collect(),
+        ),
+        captured_at: Some(captured_at),
+    });
+    record
 }
 
 /// `reagents` is (item id, count required).
@@ -160,13 +186,126 @@ fn the_recipe_and_the_materials_can_live_on_different_characters() {
     assert_eq!(bag.crafter, "Tailor");
     assert_eq!(bag.can_make_now, 10, "40 cloth at 4 each");
     assert_eq!(
-        bag.reagents[0].held_by.get("Vault"),
-        Some(&40),
+        bag.reagents[0].held_by.get("Vault").map(HeldAmount::total),
+        Some(40),
         "and it says the cloth is on the bank alt"
     );
     assert_eq!(bag.reagent_cost, Some(400));
     assert_eq!(bag.output_value, Some(900));
     assert_eq!(bag.margin(), Some(500));
+}
+
+#[test]
+fn reagents_in_the_bank_count_toward_a_craft() {
+    // The case the whole feature exists for. A bank alt's mats are in its
+    // bank, not its bags — which is what a bank alt is — so a plan that only
+    // reads bags reports "you cannot make this" about a craft the player has
+    // every material for.
+    let records = characters(vec![
+        with_recipes(
+            character("Tailor", "Horde", &[]),
+            "Tailoring",
+            vec![recipe("Linen Bag", &[(2589, 4)], Some(4238), 1)],
+        ),
+        with_bank(character("Vault", "Horde", &[]), &[(2589, 40)], 1_000),
+    ]);
+    let mut config = RosterConfig::default();
+    config.set_role("Vault", Role::Bank);
+
+    let plan = plan_for(
+        &records,
+        &config,
+        &prices_for(HORDE, &[(2589, 100), (4238, 900)]),
+    );
+
+    assert_eq!(plan.ready.len(), 1, "the banked cloth is still cloth");
+    let bag = &plan.ready[0];
+    assert_eq!(bag.can_make_now, 10);
+
+    let held = bag.reagents[0].held_by.get("Vault").expect("located");
+    assert_eq!(held.bags, 0);
+    assert_eq!(
+        held.bank, 40,
+        "and it is recorded as banked, not as to hand"
+    );
+    assert!(held.needs_a_trip());
+    assert!(
+        bag.reagents[0].needs_a_bank_trip(),
+        "owning it and having it to hand are different answers"
+    );
+}
+
+#[test]
+fn a_reagent_split_across_bags_and_bank_needs_no_trip_when_the_bags_suffice() {
+    // The distinction that stops the bank warning becoming noise. Enough in
+    // the bags is enough, whatever else is sitting in the vault.
+    let records = characters(vec![with_bank(
+        with_recipes(
+            character("Tailor", "Horde", &[(2589, 4)]),
+            "Tailoring",
+            vec![recipe("Linen Bag", &[(2589, 4)], Some(4238), 1)],
+        ),
+        &[(2589, 100)],
+        1_000,
+    )]);
+
+    let plan = plan_for(
+        &records,
+        &RosterConfig::default(),
+        &prices_for(HORDE, &[(2589, 100), (4238, 900)]),
+    );
+
+    let bag = &plan.ready[0];
+    let held = bag.reagents[0].held_by.get("Tailor").expect("located");
+    assert_eq!((held.bags, held.bank), (4, 100));
+    assert_eq!(bag.can_make_now, 26, "104 cloth at 4 each");
+    assert!(
+        !bag.reagents[0].needs_a_bank_trip(),
+        "the four in the bags are enough to start right now"
+    );
+    assert_eq!(bag.reagents[0].banked(), 100);
+}
+
+#[test]
+fn a_bank_that_has_never_been_seen_is_reported_rather_than_assumed_empty() {
+    // An unseen bank and an empty one produce the same number and mean
+    // opposite things. Only one of them justifies telling the player to go
+    // buy reagents.
+    let records = characters(vec![character("Tailor", "Horde", &[(2589, 4)])]);
+    let entries = roster::roster(&records, &RosterConfig::default());
+    let survey = economy::survey(&entries, &prices_for(HORDE, &[(2589, 100)]));
+
+    assert!(
+        survey
+            .caveats
+            .iter()
+            .any(|caveat| caveat.contains("bank has never been seen") && caveat.contains("Tailor")),
+        "got {:?}",
+        survey.caveats
+    );
+}
+
+#[test]
+fn a_bank_seen_and_empty_says_nothing() {
+    // The other half of the same claim: once the player has stood at a banker,
+    // silence is the correct output. A warning that never goes away is one
+    // nobody reads.
+    let records = characters(vec![with_bank(
+        character("Tailor", "Horde", &[(2589, 4)]),
+        &[],
+        1_000,
+    )]);
+    let entries = roster::roster(&records, &RosterConfig::default());
+    let survey = economy::survey(&entries, &prices_for(HORDE, &[(2589, 100)]));
+
+    assert!(
+        !survey
+            .caveats
+            .iter()
+            .any(|caveat| caveat.contains("bank has never been seen")),
+        "got {:?}",
+        survey.caveats
+    );
 }
 
 #[test]

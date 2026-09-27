@@ -1499,9 +1499,23 @@ fn holders(holding: &economy::Holding) -> String {
     holding
         .held_by
         .iter()
-        .map(|(name, count)| format!("{name} {count}"))
+        .map(|(name, held)| format!("{name} {}{}", held.total(), bank_mark(held)))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// Marks a count that is wholly or partly in the bank.
+///
+/// Two cases rather than one symbol for both, because they mean different
+/// things to someone deciding what to do next: a stack entirely in the bank is
+/// a trip, where one split across bags and bank may already have enough to
+/// hand.
+fn bank_mark(held: &economy::HeldAmount) -> &'static str {
+    match (held.bags, held.bank) {
+        (0, bank) if bank > 0 => " (bank)",
+        (_, bank) if bank > 0 => " (some banked)",
+        _ => "",
+    }
 }
 
 /// The faction half of a market key, for the column that only appears when the
@@ -1685,7 +1699,7 @@ fn reagent_holders(reagent: &crafting::ReagentStatus) -> String {
     reagent
         .held_by
         .iter()
-        .map(|(name, count)| format!("{name} {count}"))
+        .map(|(name, held)| format!("{name} {}{}", held.total(), bank_mark(held)))
         .collect::<Vec<_>>()
         .join(", ")
 }

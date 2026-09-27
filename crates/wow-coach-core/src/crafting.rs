@@ -30,7 +30,7 @@ use std::collections::BTreeMap;
 
 use crate::auctionator::{self, PriceDb, RealmPrices};
 use crate::collector::Recipe;
-use crate::economy::Holding;
+use crate::economy::{HeldAmount, Holding};
 use crate::roster::{Role, RosterEntry};
 
 /// Where a reagent is, and whether there is enough of it.
@@ -42,8 +42,9 @@ pub struct ReagentStatus {
     pub needed: u32,
     /// How many the roster holds, in this market.
     pub held: u32,
-    /// Character name to count, so the player knows where to go.
-    pub held_by: BTreeMap<String, u32>,
+    /// Character name to what it holds and where, so the player knows where to
+    /// go and whether a bank trip is part of the job.
+    pub held_by: BTreeMap<String, HeldAmount>,
     /// Unit price, when the market has seen one.
     pub unit_price: Option<u64>,
     /// The middle of this reagent's recent daily prices. One odd listing
@@ -61,6 +62,22 @@ impl ReagentStatus {
 
     pub fn is_satisfied(&self) -> bool {
         self.held >= self.needed
+    }
+
+    /// How many of these are sitting in a bank rather than in bags.
+    pub fn banked(&self) -> u32 {
+        self.held_by.values().map(|held| held.bank).sum()
+    }
+
+    /// True when the craft only works after a trip to the bank: there is
+    /// enough in total, but not enough to hand.
+    ///
+    /// Kept separate from a shortfall on purpose. "You cannot make this" and
+    /// "you can make this once you fetch the linen" are different answers, and
+    /// collapsing them into one loses the only part the player can act on.
+    pub fn needs_a_bank_trip(&self) -> bool {
+        let in_bags: u32 = self.held_by.values().map(|held| held.bags).sum();
+        self.is_satisfied() && in_bags < self.needed
     }
 }
 
@@ -465,8 +482,24 @@ fn caveats(plan: &CraftPlan, without_reagents: usize, considered: usize) -> Vec<
         );
     }
 
+    let bank_trips = plan
+        .ready
+        .iter()
+        .filter(|craftable| {
+            craftable
+                .reagents
+                .iter()
+                .any(ReagentStatus::needs_a_bank_trip)
+        })
+        .count();
+    if bank_trips > 0 {
+        caveats.push(format!(
+            "{bank_trips} craft(s) are only ready once you visit the bank — the reagents are owned but not to hand, and on another character that means the mailbox too."
+        ));
+    }
+
     caveats.push(
-        "Only reagents in bags count. A bank the collector has not seen is invisible here."
+        "Bank contents are whatever was there the last time that character stood at a banker, so a stale bank reads as a holding you may have since spent."
             .to_string(),
     );
 

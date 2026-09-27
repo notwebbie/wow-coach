@@ -184,7 +184,8 @@ fn a_bank_alt_leaves_the_rotation_and_stays_in_the_economy() {
         .expect("the shared stack is totalled");
     assert_eq!(peacebloom.count, 210, "10 on Main plus 200 in the vault");
     assert_eq!(
-        peacebloom.held_by["Vault"], 200,
+        peacebloom.held_by["Vault"].total(),
+        200,
         "and it says where to go for it"
     );
 }

@@ -221,6 +221,48 @@ expected to work offline, so a roster-wide holdings view had nothing to print
 but bare numbers. Never match on `name`: it differs by locale and by whether
 the client happened to have the item loaded.
 
+`inventory` covers bags 0–4 only. The bank is a separate key, for the reason
+below.
+
+### Bank
+
+```lua
+["bank"] = {
+    ["bags"] = { { ["bagIndex"] = -1, ["slots"] = 24, ["freeSlots"] = 22 }, ... },
+    ["totalSlots"] = 40,
+    ["freeSlots"] = 36,
+    ["contents"] = { { ["itemID"] = 2589, ["count"] = 100, ["name"] = "Linen Cloth" }, ... },
+    ["capturedAt"] = 1700000000,
+},
+```
+
+Same shape as `inventory`, plus a timestamp, and kept apart from it for a
+reason that readers have to honour: **the bank is only readable while its
+window is open.** It is a timestamped cache exactly like `recipes`, not a live
+capture.
+
+Containers read are the main bank window (`-1`), the seven purchasable bag
+slots (`5`–`11`), and the reagent bank (`-3`) on clients that have one.
+
+Two rules follow, and both exist because the client does not fail helpfully
+when the bank is shut. It answers *emptily*: `GetContainerNumSlots` still
+returns the right size, and only the item lookups come back nil. A bank read
+away from a banker therefore looks like a bank that is genuinely empty.
+
+1. **The collector only reads the bank on `BANKFRAME_OPENED`** and on slot
+   changes that arrive while it is known to be open. Nothing else, including a
+   routine snapshot, touches it.
+2. **A capture never clears a previous one.** The last good look is kept until
+   a better one replaces it, because forgetting a mule's contents the moment
+   the player walks away from the banker makes the key useless for the one
+   character it exists to serve.
+
+So `bank` absent means **never seen**, which is not the same as empty and must
+never be displayed as such — it makes every roster total a floor rather than a
+count. Readers must carry `capturedAt` into anything they show: "you have 40
+Linen" and "you had 40 Linen three weeks ago" are different claims, and only
+the second one is supported.
+
 ### Recipes
 
 ```lua

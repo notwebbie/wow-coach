@@ -1,6 +1,36 @@
 WoWCoachCollectorDB = {
 	["characters"] = {
 		["11:tbc_classic|10:Test Realm|8:Testhero"] = {
+			["bank"] = {
+				["bags"] = {
+					{
+						["bagIndex"] = -1,
+						["freeSlots"] = 22,
+						["itemID"] = 4018,
+						["slots"] = 24,
+					},
+					{
+						["bagIndex"] = 5,
+						["freeSlots"] = 15,
+						["itemID"] = 4024,
+						["slots"] = 16,
+					},
+				},
+				["capturedAt"] = 1700000000,
+				["contents"] = {
+					{
+						["count"] = 100,
+						["itemID"] = 2589,
+						["name"] = "Linen Cloth",
+					},
+					{
+						["count"] = 60,
+						["itemID"] = 2772,
+					},
+				},
+				["freeSlots"] = 37,
+				["totalSlots"] = 40,
+			},
 			["bindLocation"] = "Test Inn",
 			["capturedAt"] = 1700000000,
 			["class"] = "MAGE",

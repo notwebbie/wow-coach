@@ -127,6 +127,10 @@ pub struct CharacterRecord {
     pub quests: Option<Vec<Quest>>,
     pub quests_complete: Option<bool>,
     pub inventory: Option<Inventory>,
+    /// The bank, as of the last time its window was open. Absent means it has
+    /// never been seen, which is not the same as empty and must never be shown
+    /// as such.
+    pub bank: Option<Bank>,
     pub ruleset: Option<Ruleset>,
     pub pet: Option<Pet>,
     pub recipes: Option<BTreeMap<String, ProfessionRecipes>>,
@@ -215,10 +219,42 @@ pub struct Inventory {
     pub contents: Option<Vec<ItemStack>>,
 }
 
+/// The bank, and when it was last looked at.
+///
+/// The bank differs from the bags in one way that matters to every reader: it
+/// can only be read standing at a banker, so what is stored here is always a
+/// memory rather than a current reading. The timestamp is therefore not a
+/// nicety. It is the difference between "you have 40 Linen" and "you had 40
+/// Linen three weeks ago", and a reader that drops it is making a claim the
+/// data does not support.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Bank {
+    #[serde(deserialize_with = "empty_table_as_list")]
+    pub bags: Option<Vec<Bag>>,
+    pub total_slots: Option<u32>,
+    pub free_slots: Option<u32>,
+    #[serde(deserialize_with = "empty_table_as_list")]
+    pub contents: Option<Vec<ItemStack>>,
+    /// Unix seconds at which the bank window was last read.
+    pub captured_at: Option<i64>,
+}
+
+impl Bank {
+    /// How long ago this snapshot was taken, in days.
+    pub fn age_days(&self, now: i64) -> Option<i64> {
+        let at = self.captured_at?;
+        Some(((now - at).max(0)) / 86_400)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Bag {
-    pub bag_index: Option<u8>,
+    /// Signed, because the bank's containers are negative: `-1` is the main
+    /// bank window and `-3` the reagent bank. A `u8` here parsed every bag
+    /// fine and rejected the whole file the moment a bank was captured.
+    pub bag_index: Option<i8>,
     #[serde(rename = "itemID")]
     pub item_id: Option<u32>,
     pub slots: Option<u32>,
