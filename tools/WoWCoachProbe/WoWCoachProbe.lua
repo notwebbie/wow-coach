@@ -640,6 +640,26 @@ frame:SetScript("OnEvent", function(_, event)
 end)
 
 SLASH_WCPROBE1 = "/wcprobe"
+-- A subcommand's findings go to the file, not only to the chat frame.
+--
+-- `legacy`, `pets` and `secret` printed their results and stored nothing, so
+-- the only way an answer reached anybody was the player copying it out of chat
+-- by hand. That is a diagnostic that does not diagnose: the checklist asks for
+-- `/wcprobe legacy` precisely because it dumps the Adventure tree looking for
+-- the Well Rested node, and after a real run the file held no trace of it.
+--
+-- Stored under `runs` like a full pass, tagged with the subcommand, so the
+-- shape is the one every reader already handles.
+local function recordSubcommand(command, results)
+    local store = db().runs
+    store[#store + 1] = {
+        at = time(),
+        command = command,
+        interface = select(4, GetBuildInfo()),
+        results = results,
+    }
+end
+
 SlashCmdList["WCPROBE"] = function(argument)
     local command = string.lower(string.match(argument or "", "^%s*(%S*)") or "")
     if command == "auras" then
@@ -647,18 +667,21 @@ SlashCmdList["WCPROBE"] = function(argument)
     elseif command == "recipes" then
         local results = {}
         probeRecipes(results, "manual")
+        recordSubcommand("recipes", results)
         for name, result in pairs(results) do
             out(string.format("  %s = %s", name, tostring(result.value or result.detail or result.status)))
         end
     elseif command == "legacy" then
         local results = {}
         probeLegacy(results, true)
+        recordSubcommand("legacy", results)
         for name, result in pairs(results) do
             out(string.format("  %s = %s", name, tostring(result.value or result.detail or result.status)))
         end
     elseif command == "pets" then
         local results = {}
         probePets(results)
+        recordSubcommand("pets", results)
         for name, result in pairs(results) do
             out(string.format("  %s = %s", name, tostring(result.value or result.detail or result.status)))
         end
@@ -666,6 +689,7 @@ SlashCmdList["WCPROBE"] = function(argument)
         local results = {}
         checkStoredSecret(results)
         probeSecretValues(results)
+        recordSubcommand("secret", results)
         for name, result in pairs(results) do
             out(string.format("  %s = %s", name, tostring(result.value or result.detail or result.status)))
         end

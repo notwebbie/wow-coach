@@ -28,9 +28,24 @@ for _, sub in ipairs({"secret", "auras", "recipes", "legacy", "report"}) do
   local ok2, err2 = pcall(SlashCmdList["WCPROBE"], sub)
   assert(ok2, "/wcprobe " .. sub .. " errored: " .. tostring(err2))
 end
-assert(#WoWCoachProbeDB.runs == 1, "expected one recorded run")
+-- A subcommand's findings must reach the file, not only the chat frame. The
+-- checklist asks for `/wcprobe legacy` because it hunts the Well Rested node,
+-- and after a real beta run the file held no trace of having been asked.
+local full, tagged = 0, {}
+for _, run in ipairs(WoWCoachProbeDB.runs) do
+  if run.command then tagged[run.command] = true else full = full + 1 end
+end
+assert(full == 1, "expected exactly one full pass, got " .. full)
+for _, sub in ipairs({"secret", "recipes", "legacy"}) do
+  assert(tagged[sub], "/wcprobe " .. sub .. " recorded nothing to the file")
+end
+assert(not tagged["report"], "report only summarises and should record nothing")
+
 assert(#WoWCoachProbeDB.restedSamples >= 2, "rested sampling did not record")
-local r = WoWCoachProbeDB.runs[1].results
+local r
+for _, run in ipairs(WoWCoachProbeDB.runs) do
+  if not run.command then r = run.results end
+end
 assert(r["client.hasSkillInfo"].value == "false", "sentinel should report absent C_SkillInfo")
 assert(r["skills.count"].status ~= "ok", "absent API should not report ok")
 print("smoke: survived a bare client; " .. #messages .. " chat lines, " ..

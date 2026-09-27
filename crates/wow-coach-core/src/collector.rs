@@ -428,12 +428,20 @@ impl CharacterRecord {
     /// and nothing in the API exposes either. Callers must check
     /// [`Self::rested_cap_is_known`] before treating this as fact.
     pub fn rested_cap(&self) -> Option<u64> {
-        self.max_xp.map(|max| max * 3 / 2)
+        let model = crate::rested::model_for(self.game_flavor.as_deref());
+        model.cap_xp(self.max_xp?)
     }
 
     /// Whether the rested model is trustworthy for this character's client.
+    ///
+    /// This asks about the **cap**, not the rate. The cap is what the ranking
+    /// needs, because "how much of it is left" is what decides whether parked
+    /// time is being wasted — so a client whose fill rate has been measured
+    /// but whose cap has not is still unknown here, and deliberately so.
     pub fn rested_cap_is_known(&self) -> bool {
-        !matches!(self.game_flavor.as_deref(), Some("forever"))
+        crate::rested::model_for(self.game_flavor.as_deref())
+            .cap_basis
+            .is_known()
     }
 
     /// How full the rested bar is, 0.0 to 1.0.
