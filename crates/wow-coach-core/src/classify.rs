@@ -18,6 +18,19 @@ use crate::roster::{Role, RosterConfig, RosterEntry};
 
 /// A character below this level with nothing in its quest log is far more
 /// likely to be storage than a character somebody is levelling.
+///
+/// **Observed to miss real bank alts, by a wide margin.** On the author's live
+/// roster the two bank characters are a level 20 warlock carrying 24 quests
+/// and a level 8 mage — both played, both past this threshold, and neither
+/// proposable by any rule in this module. What the inference actually finds is
+/// the classic level-1 mule parked in a city, and nothing else.
+///
+/// This is not a number to raise. A played character and a bank character look
+/// the same from outside, because the player is the only one who knows which
+/// is which — so the answer is to make saying so easy (the roadmap's Phase 4),
+/// not to guess harder. Recorded rather than quietly tuned, because the next
+/// person here deserves to know the constant was tested against a real roster
+/// and lost.
 const STORAGE_LEVEL: u16 = 5;
 
 /// How long a character has to be observably idle before silence means
