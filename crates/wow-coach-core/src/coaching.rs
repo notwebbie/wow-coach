@@ -311,9 +311,26 @@ pub fn advise(entries: &[RosterEntry<'_>], roster_is_complete: bool) -> Advice {
         );
     }
     if entries.iter().all(|entry| entry.role != Role::Active) && !entries.is_empty() {
-        advice
-            .caveats
-            .push("No character is in the play rotation.".to_string());
+        // Two situations, and only one is a problem the player can fix in ten
+        // seconds. "Everything is parked" is a decision they made. "Nothing
+        // has a role yet" is a tool that has not been told anything and is
+        // about to look broken. An empty ranking with one generic line covers
+        // both and helps with neither.
+        let undecided: Vec<&str> = entries
+            .iter()
+            .filter(|entry| !entry.role.is_decided())
+            .map(|entry| entry.name())
+            .collect();
+        if undecided.is_empty() {
+            advice
+                .caveats
+                .push("No character is in the play rotation.".to_string());
+        } else {
+            advice.caveats.push(format!(
+                "Nothing is marked as being levelled, so there is nothing to rank. No role set yet for {}. Mark the ones you are levelling with `set-role <name> active`.",
+                undecided.join(", ")
+            ));
+        }
     }
 
     advice

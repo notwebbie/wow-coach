@@ -293,16 +293,81 @@ fn a_bank_alt_leaves_the_rotation_but_keeps_its_economy() {
 }
 
 #[test]
-fn roles_default_to_active_and_resolve_by_name() {
+fn a_character_nobody_has_spoken_for_is_not_in_the_levelling_rotation() {
+    // This asserted the opposite until the rotation became a choice. A
+    // character rolled to hold a name joined "what should I play next" the
+    // first time the addon saw it, which nobody asked for — and being wrongly
+    // in a ranking is invisible, where being absent from one is printed in the
+    // roster with the reason beside it.
     let loaded = collector::load(&fixture("collector-v2.tbc.lua")).unwrap();
     let config = RosterConfig::default();
     let key = loaded.db.characters.keys().next().unwrap();
-    assert_eq!(config.role_for(key), Role::Active);
+
+    assert_eq!(config.role_for(key), Role::Unclassified);
+    assert!(!config.role_for(key).in_play_rotation());
+    assert!(!config.role_for(key).is_decided());
+    assert!(
+        config.role_for(key).in_economy(),
+        "it still counts for professions, materials and gold — that needs no decision"
+    );
 
     // Players type names, not storage keys, and not consistently capitalised.
     let resolved = RosterConfig::resolve(&loaded.db.characters, "testhero");
     assert_eq!(resolved, Some(key.as_str()));
     assert_eq!(RosterConfig::resolve(&loaded.db.characters, "nobody"), None);
+}
+
+#[test]
+fn reserved_and_parked_differ_only_where_it_matters() {
+    // Both sit out and neither is nagged. The single difference is the reason
+    // they are separate roles at all: a parked character was being levelled
+    // and has a rested bar that will cap and stop earning, which is worth
+    // saying. A name-holder has nothing to waste.
+    for role in [Role::Parked, Role::Reserved] {
+        assert!(!role.in_play_rotation(), "{role:?} sits out");
+        assert!(!role.wants_reminders(), "{role:?} is not nagged");
+        assert!(role.in_economy(), "{role:?} still counts for holdings");
+        assert!(role.is_decided(), "{role:?} is a decision, not a default");
+    }
+    assert!(Role::Parked.wants_rested_warnings());
+    assert!(
+        !Role::Reserved.wants_rested_warnings(),
+        "a character that has never been played is not wasting rest"
+    );
+}
+
+#[test]
+fn the_words_a_player_types_for_a_role_all_resolve() {
+    // "levelling" is what this list is for, whatever the enum calls it, and
+    // someone typing the obvious word should not get an error.
+    assert_eq!(Role::parse("levelling"), Some(Role::Active));
+    assert_eq!(Role::parse("leveling"), Some(Role::Active));
+    assert_eq!(Role::parse("Active"), Some(Role::Active));
+    assert_eq!(Role::parse(" bank "), Some(Role::Bank));
+    assert_eq!(Role::parse("reserve"), Some(Role::Reserved));
+    assert_eq!(Role::parse("RESERVED"), Some(Role::Reserved));
+    assert_eq!(Role::parse("park"), Some(Role::Parked));
+    assert_eq!(Role::parse("banker"), None);
+    assert_eq!(Role::parse(""), None);
+
+    // Every role's own label round-trips, so the word printed is a word
+    // accepted.
+    for role in [Role::Active, Role::Bank, Role::Parked, Role::Reserved] {
+        assert_eq!(Role::parse(role.label()), Some(role), "{role:?}");
+    }
+}
+
+#[test]
+fn spelling_out_unclassified_means_the_same_as_leaving_it_out() {
+    // Two ways to say "undecided" that disagreed would be a trap for anyone
+    // hand-editing this file, which is currently the only way to edit it.
+    let mut config = RosterConfig::default();
+    config.set_role("someone", Role::Unclassified);
+    assert!(!config.is_classified("someone"));
+    assert!(!config.is_classified("never-mentioned"));
+
+    config.set_role("someone", Role::Reserved);
+    assert!(config.is_classified("someone"));
 }
 
 #[test]

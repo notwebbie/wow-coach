@@ -34,6 +34,22 @@ fn roster_of(records: Vec<CharacterRecord>) -> BTreeMap<String, CharacterRecord>
         .collect()
 }
 
+/// A config that marks every character as being levelled.
+///
+/// These tests are about how the ranking orders characters the player IS
+/// levelling, so the role has to be stated rather than assumed. It used to be
+/// assumed: `Active` was the default, and twenty tests here quietly depended
+/// on it. That is exactly the behaviour that was wrong in the product — a
+/// character nobody had spoken for was treated as one being levelled — so the
+/// fix is to say it, not to restore the default.
+fn levelling(characters: &BTreeMap<String, CharacterRecord>) -> RosterConfig {
+    let mut config = RosterConfig::default();
+    for key in characters.keys() {
+        config.set_role(key.clone(), Role::Active);
+    }
+    config
+}
+
 #[test]
 fn a_capped_character_outranks_a_fuller_one_that_is_still_filling() {
     // The prototype's exact failure: it would have picked by name. The point
@@ -43,7 +59,7 @@ fn a_capped_character_outranks_a_fuller_one_that_is_still_filling() {
         character("Zeta", 20, cap_for(20_800), 20_800), // at cap
         character("Alpha", 30, 27_000, 38_800),         // 70%, still filling
     ]);
-    let config = RosterConfig::default();
+    let config = levelling(&characters);
     let entries = roster::roster(&characters, &config);
     let advice = coaching::advise(&entries, true);
 
@@ -64,7 +80,7 @@ fn among_capped_characters_the_higher_level_goes_first() {
         character("Low", 20, cap_for(20_800), 20_800),
         character("High", 40, cap_for(62_400), 62_400),
     ]);
-    let entries = roster::roster(&characters, &RosterConfig::default());
+    let entries = roster::roster(&characters, &levelling(&characters));
     let advice = coaching::advise(&entries, true);
     assert_eq!(advice.play_next().unwrap().name, "High");
 }
@@ -73,7 +89,7 @@ fn among_capped_characters_the_higher_level_goes_first() {
 fn the_reason_contains_the_arithmetic_that_produced_it() {
     // A recommendation that cannot show its numbers is a guess.
     let characters = roster_of(vec![character("Capped", 20, cap_for(20_800), 20_800)]);
-    let entries = roster::roster(&characters, &RosterConfig::default());
+    let entries = roster::roster(&characters, &levelling(&characters));
     let advice = coaching::advise(&entries, true);
 
     let reason = advice.play_next().unwrap().reasons.join(" ");
@@ -87,7 +103,7 @@ fn the_reason_contains_the_arithmetic_that_produced_it() {
 #[test]
 fn a_character_still_filling_is_described_as_working_not_neglected() {
     let characters = roster_of(vec![character("Filling", 30, 10_000, 38_800)]);
-    let entries = roster::roster(&characters, &RosterConfig::default());
+    let entries = roster::roster(&characters, &levelling(&characters));
     let advice = coaching::advise(&entries, true);
     let reason = advice.play_next().unwrap().reasons.join(" ");
     assert!(
@@ -101,7 +117,7 @@ fn a_character_not_resting_is_told_to_be_parked_not_played() {
     let mut record = character("Standing", 25, 500, 25_000);
     record.is_resting = Some(false);
     let characters = roster_of(vec![record]);
-    let entries = roster::roster(&characters, &RosterConfig::default());
+    let entries = roster::roster(&characters, &levelling(&characters));
     let advice = coaching::advise(&entries, true);
 
     assert!(advice.play.is_empty(), "it is not a play suggestion");
@@ -132,7 +148,7 @@ fn frictions_break_ties_and_name_what_an_hour_would_fix() {
     let idle = character("Idle", 20, cap_for(20_800), 20_800);
 
     let characters = roster_of(vec![busy, idle]);
-    let entries = roster::roster(&characters, &RosterConfig::default());
+    let entries = roster::roster(&characters, &levelling(&characters));
     let advice = coaching::advise(&entries, true);
 
     let next = advice.play_next().unwrap();
@@ -175,7 +191,7 @@ fn a_profession_at_its_cap_is_friction_worth_naming() {
     );
     record.recipes = Some(recipes);
     let characters = roster_of(vec![record]);
-    let entries = roster::roster(&characters, &RosterConfig::default());
+    let entries = roster::roster(&characters, &levelling(&characters));
     let advice = coaching::advise(&entries, true);
     assert!(advice
         .play_next()
@@ -193,7 +209,7 @@ fn bank_alts_are_not_play_suggestions_and_are_not_nagged() {
         character("Banker", 20, cap_for(20_800), 20_800),
         character("Player", 21, 1_000, 22_000),
     ]);
-    let mut config = RosterConfig::default();
+    let mut config = levelling(&characters);
     config.set_role("Banker", Role::Bank);
 
     let entries = roster::roster(&characters, &config);
@@ -210,7 +226,7 @@ fn bank_alts_are_not_play_suggestions_and_are_not_nagged() {
 #[test]
 fn an_incomplete_roster_qualifies_the_advice() {
     let characters = roster_of(vec![character("Only", 20, cap_for(20_800), 20_800)]);
-    let entries = roster::roster(&characters, &RosterConfig::default());
+    let entries = roster::roster(&characters, &levelling(&characters));
 
     let complete = coaching::advise(&entries, true);
     assert!(complete.caveats.is_empty());
@@ -231,7 +247,7 @@ fn forever_characters_are_not_ranked_on_a_rested_model_we_do_not_have() {
     let mut record = character("Foreverchar", 24, 24_600, 16_400);
     record.game_flavor = Some("forever".to_string());
     let characters = roster_of(vec![record]);
-    let entries = roster::roster(&characters, &RosterConfig::default());
+    let entries = roster::roster(&characters, &levelling(&characters));
     let advice = coaching::advise(&entries, true);
 
     let next = advice.play_next().unwrap();
@@ -257,7 +273,7 @@ fn forever_quest_logs_are_bigger_and_the_threshold_follows() {
     forever.quests = Some((0..24).map(|_| Quest::default()).collect());
 
     let characters = roster_of(vec![tbc, forever]);
-    let entries = roster::roster(&characters, &RosterConfig::default());
+    let entries = roster::roster(&characters, &levelling(&characters));
     let advice = coaching::advise(&entries, true);
 
     let pressured = |name: &str| {
@@ -277,7 +293,7 @@ fn forever_quest_logs_are_bigger_and_the_threshold_follows() {
 #[test]
 fn an_empty_roster_produces_no_advice_and_does_not_panic() {
     let characters = BTreeMap::new();
-    let entries = roster::roster(&characters, &RosterConfig::default());
+    let entries = roster::roster(&characters, &levelling(&characters));
     let advice = coaching::advise(&entries, true);
     assert!(advice.play_next().is_none());
     assert!(advice.caveats.is_empty());
@@ -329,7 +345,7 @@ fn only_actual_trade_skills_raise_the_training_friction() {
 
     // Without recipe evidence, nothing is known to be a trade skill.
     let characters = roster_of(vec![record.clone()]);
-    let entries = roster::roster(&characters, &RosterConfig::default());
+    let entries = roster::roster(&characters, &levelling(&characters));
     let advice = coaching::advise(&entries, true);
     assert!(
         !advice
@@ -348,7 +364,7 @@ fn only_actual_trade_skills_raise_the_training_friction() {
     record.recipes = Some(recipes);
 
     let characters = roster_of(vec![record]);
-    let entries = roster::roster(&characters, &RosterConfig::default());
+    let entries = roster::roster(&characters, &levelling(&characters));
     let advice = coaching::advise(&entries, true);
     let said: Vec<&str> = advice
         .play_next()

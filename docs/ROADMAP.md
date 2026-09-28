@@ -86,8 +86,10 @@ architecture it builds toward is recorded in [ARCHITECTURE.md](ARCHITECTURE.md).
   return visits re-read without re-picking.
 - Character selector, snapshot timeline, level/XP/currency/zone/profession deltas.
 - Local history in the browser. Explicit export with preview and redaction.
-- **Roster roles are editable in the UI** — add, change and clear a character's
-  role without a terminal, per faction, since the bank alts are one per market.
+- **Roster roles are editable in the UI** — set, change and clear any of the
+  four roles without a terminal: *active* (being levelled), *bank*, *parked*
+  (played, then set down) and *reserved* (holding a name, never started). Bank
+  alts are one per faction, so the picker has to make the market obvious.
   Today this is `wow-coach set-role` only, which is fine for the author and a
   wall for everybody else, and a tool built for other players cannot put a core
   setting behind a shell prompt. The bank role decides what the crafting view

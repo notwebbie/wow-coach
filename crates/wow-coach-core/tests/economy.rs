@@ -155,6 +155,9 @@ fn a_bank_alt_leaves_the_rotation_and_stays_in_the_economy() {
     ]);
     let mut config = RosterConfig::default();
     config.set_role("Vault", Role::Bank);
+    // Stated, not assumed: an undecided character is no longer in the
+    // rotation, so the contrast this test draws needs Main to be a decision.
+    config.set_role("Main", Role::Active);
     let entries = roster::roster(&roster_records, &config);
 
     // The play rotation sees one character.

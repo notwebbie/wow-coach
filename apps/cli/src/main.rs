@@ -52,7 +52,7 @@ USAGE:
     wow-coach history [<character>] [--file <path>] [--store <path>]
     wow-coach doctor
     wow-coach classify [--dry-run] [--file <path>] [--config <path>]
-    wow-coach set-role <character> <active|bank|parked|unset> [--config <path>]
+    wow-coach set-role <character> <active|bank|parked|reserved|unset> [--config <path>]
     wow-coach economy [--all] [--prices <path>] [--file <path>] [--config <path>]
     wow-coach craft [--all] [--prices <path>] [--file <path>] [--config <path>]
     wow-coach quests [<character>] [--all] [--file <path>] [--config <path>]
@@ -573,15 +573,13 @@ fn set_role(config_path: &Path, file: Option<&Path>, name: &str, role: &str) -> 
         "unset" | "none" | "clear"
     );
     let role = if clearing {
-        Role::Active
+        Role::Unclassified
     } else {
-        match role.to_ascii_lowercase().as_str() {
-            "active" => Role::Active,
-            "bank" => Role::Bank,
-            "parked" => Role::Parked,
-            other => {
+        match Role::parse(role) {
+            Some(parsed) => parsed,
+            None => {
                 return Err(format!(
-                    "{other} is not a role; use active, bank, parked, or unset to undo"
+                    "{role} is not a role; use active (levelling), bank, parked, reserved, or unset to undo"
                 ))
             }
         }
@@ -617,9 +615,11 @@ fn set_role(config_path: &Path, file: Option<&Path>, name: &str, role: &str) -> 
 
 fn describe_role(role: Role) -> &'static str {
     match role {
-        Role::Active => "active",
+        Role::Unclassified => "unset",
+        Role::Active => "being levelled",
         Role::Bank => "a bank alt",
         Role::Parked => "parked",
+        Role::Reserved => "reserved — holding the name, not started",
     }
 }
 
@@ -787,11 +787,8 @@ fn classify_roles(
         }
         let chosen = match answer.trim().to_ascii_lowercase().as_str() {
             "" | "accept" | "y" | "yes" => Some(suggestion.suggested),
-            "a" | "active" => Some(Role::Active),
-            "b" | "bank" => Some(Role::Bank),
-            "p" | "parked" => Some(Role::Parked),
             "q" | "quit" => break,
-            _ => None,
+            other => Role::parse(other),
         };
         match chosen {
             Some(role) => {
@@ -1078,11 +1075,7 @@ fn show_roster(file: Option<&Path>, config_path: &Path) -> Result<(), String> {
             truncate(entry.name(), 14),
             record.level.map(|l| l.to_string()).unwrap_or_else(dash),
             truncate(record.class.as_deref().unwrap_or("—"), 10),
-            match entry.role {
-                Role::Active => "active",
-                Role::Bank => "bank",
-                Role::Parked => "parked",
-            },
+            entry.role.label(),
             rested_column(record),
             record
                 .free_bag_slots()
@@ -1112,21 +1105,42 @@ fn show_roster(file: Option<&Path>, config_path: &Path) -> Result<(), String> {
         );
     }
 
-    let banked: Vec<_> = entries
+    // Deliberately out and not yet decided are different states, and running
+    // them together would tell a player who has set nothing that they have
+    // made choices they have not made.
+    let set_aside: Vec<_> = entries
         .iter()
-        .filter(|entry| !entry.role.in_play_rotation())
+        .filter(|entry| entry.role.is_decided() && !entry.role.in_play_rotation())
         .collect();
-    if !banked.is_empty() {
+    if !set_aside.is_empty() {
         println!();
         println!(
-            "{} out of the play rotation, still counted for professions and gold: {}",
-            banked.len(),
-            banked
+            "{} out of the levelling rotation, still counted for professions and gold: {}",
+            set_aside.len(),
+            set_aside
                 .iter()
                 .map(|entry| entry.name())
                 .collect::<Vec<_>>()
                 .join(", ")
         );
+    }
+
+    let undecided: Vec<_> = entries
+        .iter()
+        .filter(|entry| !entry.role.is_decided())
+        .collect();
+    if !undecided.is_empty() {
+        println!();
+        println!(
+            "{} with no role yet, so not ranked for what to play: {}",
+            undecided.len(),
+            undecided
+                .iter()
+                .map(|entry| entry.name())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        println!("Set one with `wow-coach set-role <name> active|bank|parked|reserved`.");
     }
 
     if entries
@@ -1551,11 +1565,7 @@ fn money(copper: u64) -> String {
 }
 
 fn describe_role_short(role: Role) -> &'static str {
-    match role {
-        Role::Active => "active",
-        Role::Bank => "bank",
-        Role::Parked => "parked",
-    }
+    role.label()
 }
 
 fn show_craft(
