@@ -82,6 +82,41 @@ function GetSkillLineInfo(index)
     return "Daggers", false, true, 100, 0, 0, 100
 end
 
+-- Spellbook: two tabs, and one FUTURESPELL among them.
+--
+-- The greyed-out entry is the point of this stub. The spellbook lists spells
+-- the character is high enough for but has not trained, and recording one
+-- turns "could learn this" into "knows this" — a claim a player would act on
+-- by walking to a city they cannot actually reach.
+local spellbook = {
+    -- index = { skillType, spellID, name }
+    [1] = { "SPELL", 133, "Fireball" },
+    [2] = { "SPELL", 3567, "Teleport: Orgrimmar" },
+    [3] = { "FUTURESPELL", 3566, "Teleport: Thunder Bluff" },
+    [4] = { "SPELL", 1449, "Arcane Explosion" },
+    -- A flyout container rather than a castable spell.
+    [5] = { "FLYOUT", 9999, "Teleports" },
+    -- The same spell again, as a second tab can list it.
+    [6] = { "SPELL", 133, "Fireball" },
+}
+function GetNumSpellTabs() return 2 end
+function GetSpellTabInfo(tab)
+    if tab == 1 then return "General", nil, 0, 4 end
+    return "Arcane", nil, 4, 2
+end
+function GetSpellBookItemInfo(index, bookType)
+    assert(bookType == "spell")
+    local entry = spellbook[index]
+    if not entry then return nil end
+    return entry[1], entry[2]
+end
+function GetSpellBookItemName(index, bookType)
+    assert(bookType == "spell")
+    local entry = spellbook[index]
+    if not entry then return nil end
+    return entry[3]
+end
+
 -- Talents: pointsSpent is return 7 of C_SpecializationInfo.GetSpecializationInfo.
 C_SpecializationInfo = {}
 function C_SpecializationInfo.GetSpecializationInfo(index)
@@ -354,6 +389,21 @@ end
 check(linen and linen.count == 32, "stacks of one item must be summed across bags")
 check(snap.inventory and snap.inventory.contents and #snap.inventory.contents == 2,
     "the bag capture must not reach into the bank")
+
+-- Spells
+local spells = snap.spells
+check(spells ~= nil, "the spellbook should be captured")
+local byID = {}
+for _, entry in ipairs(spells or {}) do byID[entry.spellID] = entry end
+check(byID[133] ~= nil, "a known spell should be recorded")
+check(byID[133] and byID[133].name == "Fireball", "the cached name should come along")
+check(byID[3567] ~= nil, "a known teleport should be recorded")
+check(byID[3566] == nil, "a FUTURESPELL is eligible, not known, and must not be recorded")
+check(byID[9999] == nil, "a flyout container is not a spell the character can cast")
+check(#(spells or {}) == 3, "every tab is walked, and a spell listed twice is recorded once")
+-- The collector must not decide what a teleport is; that rule lives in the core.
+check(snap.teleports == nil and snap.travel == nil,
+    "the collector must not classify spells")
 
 --------------------------------------------------------------------------------
 -- Bank

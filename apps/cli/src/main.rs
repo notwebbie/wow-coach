@@ -22,6 +22,7 @@ use wow_coach_core::gap::{self, KnownCharacter};
 use wow_coach_core::history::{self, History, Snapshot, XpGain};
 use wow_coach_core::quests;
 use wow_coach_core::roster::{self, Role, RosterConfig};
+use wow_coach_core::travel;
 
 const COLLECTOR_FILE: &str = "WoWCoachCollector.lua";
 const AUCTIONATOR_FILE: &str = "Auctionator.lua";
@@ -55,6 +56,7 @@ USAGE:
     wow-coach economy [--all] [--prices <path>] [--file <path>] [--config <path>]
     wow-coach craft [--all] [--prices <path>] [--file <path>] [--config <path>]
     wow-coach quests [<character>] [--all] [--file <path>] [--config <path>]
+    wow-coach travel [<destination>] [--file <path>] [--config <path>]
     wow-coach where
 
 `next` ranks your rotation by what is being lost: a character at the rested cap
@@ -194,6 +196,7 @@ fn run(args: &[String]) -> Result<(), String> {
             &config_path,
             if show_all { usize::MAX } else { DEFAULT_LIMIT },
         ),
+        "travel" => show_travel(positional.first().copied(), file.as_deref(), &config_path),
         "next" => show_next(file.as_deref(), &config_path),
         "roster" => show_roster(file.as_deref(), &config_path),
         other => Err(format!("unknown command {other}\n\n{}", usage())),
@@ -1724,6 +1727,92 @@ fn margin_text(craftable: &crafting::Craftable) -> String {
 
 fn crafter_text(craftable: &crafting::Craftable) -> String {
     format!("{} ({})", craftable.crafter, craftable.profession)
+}
+
+/// Who can get you where.
+///
+/// Every character counts here regardless of role, exactly as in `economy`: a
+/// bank alt that can portal to the city its bank is in is the most useful
+/// character on the roster for the errand crafting just described, and
+/// excluding it from the rotation was never meant to hide it.
+fn show_travel(
+    destination: Option<&str>,
+    file: Option<&Path>,
+    config_path: &Path,
+) -> Result<(), String> {
+    let (characters, notices, _) = gather(file)?;
+    let config = load_config(config_path);
+    let entries = roster::roster(&characters, &config);
+    let plan = travel::plan(&entries);
+
+    for notice in &notices {
+        eprintln!("note: {notice}");
+    }
+
+    match destination {
+        Some(place) => {
+            match plan
+                .by_destination
+                .iter()
+                .find(|(known, _)| known.eq_ignore_ascii_case(place))
+            {
+                Some((known, who)) => {
+                    println!("{known}: {}", who.join(", "));
+                }
+                None => {
+                    // Naming what is reachable beats "no", which reads as a
+                    // verdict on the destination rather than on the roster.
+                    println!("Nobody on the roster can reach {place}.");
+                    if !plan.by_destination.is_empty() {
+                        println!(
+                            "Reachable: {}",
+                            plan.by_destination
+                                .keys()
+                                .cloned()
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        );
+                    }
+                }
+            }
+        }
+        None => {
+            if plan.by_destination.is_empty() {
+                println!("No travel spells captured.");
+            } else {
+                println!("{:<16} WHO", "DESTINATION");
+                for (place, who) in &plan.by_destination {
+                    println!("{:<16} {}", truncate(place, 16), who.join(", "));
+                }
+            }
+
+            let with_spells: Vec<&travel::CharacterTravel> = plan
+                .characters
+                .iter()
+                .filter(|character| !character.spells.is_empty())
+                .collect();
+            if !with_spells.is_empty() {
+                println!();
+                for character in with_spells {
+                    let list: Vec<String> = character
+                        .spells
+                        .iter()
+                        .map(|spell| format!("{} ({})", spell.destination, spell.kind.label()))
+                        .collect();
+                    println!("{:<14} {}", truncate(&character.name, 14), list.join(", "));
+                }
+            }
+        }
+    }
+
+    if !plan.caveats.is_empty() {
+        println!();
+        for caveat in &plan.caveats {
+            println!("Note: {caveat}");
+        }
+    }
+
+    Ok(())
 }
 
 fn show_quests(

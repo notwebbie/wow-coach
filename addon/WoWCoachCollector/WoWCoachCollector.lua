@@ -200,6 +200,83 @@ local function captureBank()
 end
 
 --------------------------------------------------------------------------------
+-- Spells
+--
+-- The whole spellbook, by id, and deliberately not a curated list.
+--
+-- The immediate use is travel: knowing which character can reach which city
+-- turns "the reagents are on your bank alt" into a route. It would be far
+-- cheaper to check a handful of known teleport ids here and store a `teleports`
+-- table — and it would put a rule in the collector, which is the one thing this
+-- addon is not allowed to do. The list would then need an addon update for
+-- every expansion, would be wrong on any client whose ids differ, and would
+-- silently answer "no teleports" rather than "I was not looking for that one".
+--
+-- So the collector reports what the character knows, and the core decides what
+-- any of it means. Ids rather than names: an id is the same in every locale,
+-- and in Classic each rank is its own id, so the id already carries the rank.
+--
+-- FUTURESPELL entries are skipped. The spellbook shows spells the character is
+-- eligible for but has not trained, greyed out, and recording one would turn
+-- "could learn this" into "knows this" — the exact claim a player would act on.
+--------------------------------------------------------------------------------
+
+local function captureSpellsModern()
+    if not has("C_SpellBook.GetNumSpellBookSkillLines") then return nil end
+    if not has("C_SpellBook.GetSpellBookItemInfo") then return nil end
+    local spells, seen = {}, {}
+    local bank = Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player or 0
+    for line = 1, (C_SpellBook.GetNumSpellBookSkillLines() or 0) do
+        local info = C_SpellBook.GetSpellBookSkillLineInfo(line)
+        if info and info.itemIndexOffset and info.numSpellBookItems then
+            for offset = 1, info.numSpellBookItems do
+                local item = C_SpellBook.GetSpellBookItemInfo(info.itemIndexOffset + offset, bank)
+                -- itemType distinguishes a known spell from a greyed-out one
+                -- and from a flyout container. Only the first is a fact about
+                -- what this character can cast.
+                local known = item and item.spellID and not item.isOffSpec
+                    and item.itemType == (Enum.SpellBookItemType and Enum.SpellBookItemType.Spell)
+                if known and not seen[item.spellID] then
+                    seen[item.spellID] = true
+                    spells[#spells + 1] = { spellID = item.spellID, name = item.name }
+                end
+            end
+        end
+    end
+    if #spells == 0 then return nil end
+    return spells
+end
+
+local function captureSpellsClassic()
+    if not GetNumSpellTabs or not GetSpellTabInfo then return nil end
+    if not GetSpellBookItemInfo then return nil end
+    local spells, seen = {}, {}
+    for tab = 1, (GetNumSpellTabs() or 0) do
+        -- name, texture, offset, numSpells
+        local _, _, offset, numSpells = GetSpellTabInfo(tab)
+        if offset and numSpells then
+            for index = offset + 1, offset + numSpells do
+                local skillType, spellID = GetSpellBookItemInfo(index, "spell")
+                -- "FUTURESPELL" is the greyed-out entry for a spell this
+                -- character is high enough for but has not trained.
+                if skillType == "SPELL" and spellID and not seen[spellID] then
+                    seen[spellID] = true
+                    local name
+                    if GetSpellBookItemName then name = GetSpellBookItemName(index, "spell") end
+                    spells[#spells + 1] = { spellID = spellID, name = name }
+                end
+            end
+        end
+    end
+    if #spells == 0 then return nil end
+    return spells
+end
+
+local function captureSpells()
+    return captureSpellsModern() or captureSpellsClassic()
+end
+
+--------------------------------------------------------------------------------
 -- Skills
 --
 -- Forever re-implements Classic's skill lines under C_SkillInfo, returning a
@@ -749,6 +826,9 @@ function collector.capture()
         record.skillsComplete = skillsComplete
     end
 
+    local spells = captureSpells()
+    if spells then record.spells = spells end
+
     local talents = captureTalents()
     if talents then record.talents = talents end
 
@@ -811,6 +891,7 @@ local SNAPSHOT_EVENTS = {
     "PLAYER_XP_UPDATE", "PLAYER_UPDATE_RESTING", "UPDATE_EXHAUSTION",
     "ZONE_CHANGED_NEW_AREA", "QUEST_LOG_UPDATE", "BAG_UPDATE_DELAYED",
     "SKILL_LINES_CHANGED", "CHARACTER_POINTS_CHANGED", "TRAIT_CONFIG_UPDATED",
+    "LEARNED_SPELL_IN_TAB", "SPELLS_CHANGED",
     "GAME_RULES_CHANGED", "UNIT_PET", "UNIT_HAPPINESS",
 }
 

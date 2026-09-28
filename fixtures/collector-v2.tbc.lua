@@ -177,6 +177,20 @@ WoWCoachCollectorDB = {
 				},
 			},
 			["skillsComplete"] = false,
+			["spells"] = {
+				{
+					["name"] = "Fireball",
+					["spellID"] = 133,
+				},
+				{
+					["name"] = "Teleport: Orgrimmar",
+					["spellID"] = 3567,
+				},
+				{
+					["name"] = "Arcane Explosion",
+					["spellID"] = 1449,
+				},
+			},
 			["subZone"] = "Test Subzone",
 			["talents"] = {
 				["trees"] = {

@@ -10,6 +10,7 @@ pub mod lua;
 pub mod quests;
 pub mod rested;
 pub mod roster;
+pub mod travel;
 
 use std::collections::BTreeMap;
 

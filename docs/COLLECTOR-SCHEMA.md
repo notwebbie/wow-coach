@@ -263,6 +263,39 @@ count. Readers must carry `capturedAt` into anything they show: "you have 40
 Linen" and "you had 40 Linen three weeks ago" are different claims, and only
 the second one is supported.
 
+### Spells
+
+```lua
+["spells"] = {
+    { ["spellID"] = 133, ["name"] = "Fireball" },
+    { ["spellID"] = 3567, ["name"] = "Teleport: Orgrimmar" },
+    ...
+},
+```
+
+The whole spellbook, by id, and deliberately not a curated list.
+
+The first consumer is travel — which character can reach which city — and it
+would have been far cheaper to check a handful of teleport ids here and store a
+`teleports` table. That would put a **rule** in the collector, which this addon
+does not do. Such a list would need an addon update and a recapture every time
+it was wrong or incomplete, and its failure mode is the bad one: it answers "no
+teleports" when it means "I was not looking for that one".
+
+So the collector reports what the character knows and the core decides what any
+of it means. The id is the fact: it is identical in every locale, and in
+Classic each rank is its own id, so the id already carries the rank. `name` is
+whatever the client had cached and must never be matched on.
+
+**Entries the character cannot cast are excluded.** The spellbook also lists
+spells they are high enough for but have not trained, greyed out
+(`FUTURESPELL`), along with flyout containers that are not spells at all.
+Recording either would turn "could learn this" into "knows this" — a claim a
+player would act on.
+
+Absent means not captured, as everywhere else in this schema, and never "knows
+nothing".
+
 ### Recipes
 
 ```lua

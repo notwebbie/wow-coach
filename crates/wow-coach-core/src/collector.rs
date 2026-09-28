@@ -118,6 +118,10 @@ pub struct CharacterRecord {
     #[serde(rename = "restedXP")]
     pub rested_xp: Option<u64>,
 
+    /// Every spell the character knows, by id. Absent means not captured —
+    /// never "knows nothing".
+    #[serde(deserialize_with = "empty_table_as_list")]
+    pub spells: Option<Vec<KnownSpell>>,
     #[serde(deserialize_with = "empty_table_as_list")]
     pub skills: Option<Vec<Skill>>,
     /// False when a collapsed header hid lines from enumeration.
@@ -134,6 +138,19 @@ pub struct CharacterRecord {
     pub ruleset: Option<Ruleset>,
     pub pet: Option<Pet>,
     pub recipes: Option<BTreeMap<String, ProfessionRecipes>>,
+}
+
+/// One spell the character knows.
+///
+/// The id is the fact. The name is whatever the client had cached, in the
+/// client's own language, and must never be matched on — which is the point of
+/// storing ids at all.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct KnownSpell {
+    #[serde(rename = "spellID")]
+    pub spell_id: Option<u32>,
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
