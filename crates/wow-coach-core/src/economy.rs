@@ -560,8 +560,11 @@ fn caveats(
         );
     }
 
+    // Bags are current; a bank is a memory of the last time someone stood at
+    // one. Saying so is the whole caveat now that banks are counted — the
+    // figure is right, its age is not guaranteed.
     caveats.push(
-        "Only what is in bags is counted. The collector cannot read a bank it has not been standing in front of."
+        "Bank contents are whatever was there the last time that character stood at a banker, so a stale bank reads as a holding you may have since spent."
             .to_string(),
     );
 
