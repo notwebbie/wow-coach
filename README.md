@@ -33,6 +33,9 @@ and identical coaching rules. Neither client re-implements a rule.
 this way, including what was rejected.
 [`docs/COLLECTOR-SCHEMA.md`](docs/COLLECTOR-SCHEMA.md) is the addon's data
 contract — the format every client reads.
+[`docs/SOURCES.md`](docs/SOURCES.md) separates what the game client reported
+from what is a constant in the code, cites every constant, and says what this
+project will not bundle.
 
 ## Roles
 

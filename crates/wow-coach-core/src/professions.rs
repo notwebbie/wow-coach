@@ -134,6 +134,9 @@ pub struct Tier {
 /// **Master is not universal.** It arrived with The Burning Crusade. Vanilla
 /// stops at Artisan 300, and so does WoW Forever — which is why this table is
 /// never read directly, only through [`tiers_for`].
+///
+/// Sources for every value here, and the rule for adding another, are in
+/// `docs/SOURCES.md`.
 const TIERS: &[Tier] = &[
     Tier {
         name: "Apprentice",

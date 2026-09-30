@@ -86,8 +86,9 @@ pub struct TravelSpell {
 
 /// Every mage teleport and portal in the Classic and Burning Crusade clients.
 ///
-/// Ids verified individually against their spell pages. The order is by id so
-/// a duplicate is visible on sight, and a test asserts there are none.
+/// Ids verified individually against their spell pages (`docs/SOURCES.md`).
+/// The order is by id so a duplicate is visible on sight, and a test asserts
+/// there are none.
 const TRAVEL_SPELLS: &[TravelSpell] = &[
     // Teleports — one caster.
     t(3561, "Stormwind", Side::Alliance),
