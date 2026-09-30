@@ -14,6 +14,10 @@ use wow_coach_core::economy;
 use wow_coach_core::professions::{self, Difficulty, Training};
 use wow_coach_core::roster::{self, RosterConfig};
 
+/// The client the fixtures below are on. Spelled out because the tier table
+/// is per-client: Master exists here and does not exist on Forever.
+const TBC: Option<&str> = Some("tbc_classic");
+
 fn recipe(name: &str, difficulty: &str, reagents: &[(u32, u32)]) -> Recipe {
     Recipe {
         name: Some(name.to_string()),
@@ -150,9 +154,9 @@ fn training_is_due_only_when_both_gates_are_met() {
     // Two gates that fail differently, and telling them apart is the whole
     // value: short on skill means keep crafting, short on level means the
     // profession is not the thing to work on at all.
-    assert_eq!(professions::training(60, 75, 20), Training::NotYet);
+    assert_eq!(professions::training(60, 75, 20, TBC), Training::NotYet);
 
-    match professions::training(75, 75, 20) {
+    match professions::training(75, 75, 20, TBC) {
         Training::Due { tier } => {
             assert_eq!(tier.name, "Journeyman");
             assert_eq!(tier.cap, 150);
@@ -162,14 +166,14 @@ fn training_is_due_only_when_both_gates_are_met() {
 
     // At the Apprentice cap but only level 8: the trainer will not sell to
     // them, and sending them is worse than saying nothing.
-    match professions::training(75, 75, 8) {
+    match professions::training(75, 75, 8, TBC) {
         Training::ShortOnLevel { tier, needs } => {
             assert_eq!(tier.name, "Journeyman");
             assert_eq!(needs, 10);
         }
         other => panic!("expected a level gate, got {other:?}"),
     }
-    assert!(!professions::training(75, 75, 8).is_actionable());
+    assert!(!professions::training(75, 75, 8, TBC).is_actionable());
 }
 
 #[test]
@@ -178,29 +182,42 @@ fn a_racial_bonus_raises_the_cap_without_skipping_a_training_tier() {
     // an Apprentice's 75. Reading 85 as "past Apprentice" would skip
     // Journeyman, and the character would be told to train something they
     // already have while the thing they need goes unmentioned.
-    let tier = professions::next_tier(85).expect("there is a tier above 85");
+    let tier = professions::next_tier(85, TBC).expect("there is a tier above 85");
     assert_eq!(tier.name, "Journeyman");
     assert_eq!(tier.cap, 150);
 
-    match professions::training(85, 85, 20) {
+    match professions::training(85, 85, 20, TBC) {
         Training::Due { tier } => assert_eq!(tier.name, "Journeyman"),
         other => panic!("expected Journeyman due, got {other:?}"),
     }
 
     // And the ordinary cap still resolves to the same place.
     assert_eq!(
-        professions::next_tier(75).map(|t| t.name),
+        professions::next_tier(75, TBC).map(|t| t.name),
         Some("Journeyman")
     );
-    assert_eq!(professions::next_tier(150).map(|t| t.name), Some("Expert"));
-    assert_eq!(professions::next_tier(225).map(|t| t.name), Some("Artisan"));
-    assert_eq!(professions::next_tier(300).map(|t| t.name), Some("Master"));
-    assert_eq!(professions::next_tier(375), None, "nothing above Master");
+    assert_eq!(
+        professions::next_tier(150, TBC).map(|t| t.name),
+        Some("Expert")
+    );
+    assert_eq!(
+        professions::next_tier(225, TBC).map(|t| t.name),
+        Some("Artisan")
+    );
+    assert_eq!(
+        professions::next_tier(300, TBC).map(|t| t.name),
+        Some("Master")
+    );
+    assert_eq!(
+        professions::next_tier(375, TBC),
+        None,
+        "nothing above Master"
+    );
 }
 
 #[test]
 fn a_finished_skill_says_nothing_rather_than_inventing_a_tier() {
-    assert_eq!(professions::training(375, 375, 70), Training::Finished);
+    assert_eq!(professions::training(375, 375, 70, TBC), Training::Finished);
     assert!(professions::describe(&Training::Finished, "Mining").is_none());
     assert!(professions::describe(&Training::NotYet, "Mining").is_none());
 }
@@ -368,7 +385,7 @@ fn every_tier_gate_is_ordered_and_reachable() {
     // wrong one for some ranks, and nothing else would notice.
     let mut previous = 0;
     for rank in [0u16, 74, 75, 149, 150, 224, 225, 299, 300, 374] {
-        let tier = professions::next_tier(rank).expect("a tier above every rank below 375");
+        let tier = professions::next_tier(rank, TBC).expect("a tier above every rank below 375");
         assert!(tier.cap > rank, "{} is not above {rank}", tier.cap);
         assert!(tier.cap >= previous, "caps must not go backwards");
         previous = tier.cap;
@@ -376,4 +393,61 @@ fn every_tier_gate_is_ordered_and_reachable() {
         assert!(tier.level > 0);
         assert!(tier.skill < tier.cap);
     }
+}
+
+#[test]
+fn forever_stops_at_artisan_and_is_not_offered_a_master_trainer() {
+    // The bug this test exists for shipped, briefly. The tier table was
+    // written from a Burning Crusade source and applied to every client, so a
+    // Forever character at the Artisan cap was told to train Master — a tier
+    // that does not exist there. Forever is a modern client running
+    // vanilla-era content, and its professions stop where vanilla's did, at
+    // 300. Sending a player to look for an NPC that was never implemented is
+    // the same failure as the level gate, arriving by a different door.
+    const FOREVER: Option<&str> = Some("forever");
+    const VANILLA: Option<&str> = Some("classic_era");
+    const TBC: Option<&str> = Some("tbc_classic");
+
+    assert_eq!(professions::next_tier(300, FOREVER), None);
+    assert_eq!(professions::next_tier(300, VANILLA), None);
+    assert_eq!(
+        professions::next_tier(300, TBC).map(|tier| tier.name),
+        Some("Master"),
+        "Burning Crusade is where Master came from"
+    );
+
+    assert_eq!(
+        professions::training(300, 300, 60, FOREVER),
+        Training::Finished,
+        "at 300 on Forever there is nothing left to train"
+    );
+    match professions::training(300, 300, 60, TBC) {
+        Training::Due { tier } => assert_eq!(tier.name, "Master"),
+        other => panic!("expected Master due on TBC, got {other:?}"),
+    }
+
+    // Everything below Artisan is identical on all three, so the split must
+    // not disturb the common case.
+    for flavor in [FOREVER, VANILLA, TBC] {
+        assert_eq!(
+            professions::next_tier(75, flavor).map(|tier| tier.name),
+            Some("Journeyman"),
+            "{flavor:?}"
+        );
+        assert_eq!(
+            professions::next_tier(225, flavor).map(|tier| tier.name),
+            Some("Artisan"),
+            "{flavor:?}"
+        );
+    }
+
+    // A client this build has never heard of keeps every tier: far likelier to
+    // be a later one than an earlier one, and offering a tier too early beats
+    // inventing a cap that stops someone short.
+    assert_eq!(
+        professions::next_tier(300, Some("some_future_client")).map(|tier| tier.name),
+        Some("Master")
+    );
+    assert_eq!(professions::tiers_for(FOREVER).len(), 4);
+    assert_eq!(professions::tiers_for(TBC).len(), 5);
 }

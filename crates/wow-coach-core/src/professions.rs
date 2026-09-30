@@ -124,12 +124,16 @@ pub struct Tier {
     pub skill: u16,
 }
 
-/// Classic and Burning Crusade training tiers.
+/// The training tiers, in order.
 ///
 /// Two gates, not one, and they fail differently. Short on skill means keep
 /// crafting; short on level means the profession is not the thing to work on
 /// at all. Telling a player to visit a trainer they cannot buy from is the
 /// failure this table exists to prevent.
+///
+/// **Master is not universal.** It arrived with The Burning Crusade. Vanilla
+/// stops at Artisan 300, and so does WoW Forever — which is why this table is
+/// never read directly, only through [`tiers_for`].
 const TIERS: &[Tier] = &[
     Tier {
         name: "Apprentice",
@@ -163,14 +167,33 @@ const TIERS: &[Tier] = &[
     },
 ];
 
-/// The tier that would raise this skill past `max_rank`.
+/// The tiers that exist on one client.
+///
+/// Master (300 → 375) came in with The Burning Crusade. Vanilla ends at
+/// Artisan 300, and **WoW Forever ends there too** despite being a modern
+/// client — it is vanilla-era content, so its professions stop where vanilla's
+/// did. Offering a Forever character a Master trainer would send them looking
+/// for an NPC that does not exist, which is the precise failure the level gate
+/// was built to prevent, arriving by a different door.
+///
+/// An unknown flavor keeps every tier. A client this build predates is far
+/// likelier to be a later one than an earlier one, and the cost of being wrong
+/// that way is a tier offered too early rather than a cap silently invented.
+pub fn tiers_for(flavor: Option<&str>) -> &'static [Tier] {
+    match flavor {
+        Some("forever") | Some("classic_era") => &TIERS[..4],
+        _ => TIERS,
+    }
+}
+
+/// The tier that would raise this skill past `max_rank` on this client.
 ///
 /// Matched on the cap rather than by counting upward, because a racial bonus
 /// moves the cap without moving the tier: a Blood Elf enchanter sits at 85 on
 /// an Apprentice's 75, and reading 85 as "some tier above Apprentice" would
 /// skip a training step they still need.
-pub fn next_tier(max_rank: u16) -> Option<&'static Tier> {
-    TIERS.iter().find(|tier| tier.cap > max_rank)
+pub fn next_tier(max_rank: u16, flavor: Option<&str>) -> Option<&'static Tier> {
+    tiers_for(flavor).iter().find(|tier| tier.cap > max_rank)
 }
 
 /// Whether a trainer can help yet, and if not, what is missing.
@@ -200,11 +223,11 @@ impl Training {
 }
 
 /// Assess training for one skill.
-pub fn training(rank: u16, max_rank: u16, character_level: u16) -> Training {
+pub fn training(rank: u16, max_rank: u16, character_level: u16, flavor: Option<&str>) -> Training {
     if rank < max_rank {
         return Training::NotYet;
     }
-    let Some(tier) = next_tier(max_rank) else {
+    let Some(tier) = next_tier(max_rank, flavor) else {
         return Training::Finished;
     };
     if character_level < tier.level {
@@ -337,7 +360,15 @@ pub fn plan(entries: &[RosterEntry<'_>], holdings: &[Holding]) -> Vec<Profession
         let level = record.level.unwrap_or(0);
 
         for (profession, cache) in record.recipes.iter().flatten() {
-            plans.push(one(entry.name(), profession, cache, level, &market, &held));
+            plans.push(one(
+                entry.name(),
+                profession,
+                cache,
+                level,
+                record.game_flavor.as_deref(),
+                &market,
+                &held,
+            ));
         }
     }
 
@@ -351,11 +382,13 @@ pub fn plan(entries: &[RosterEntry<'_>], holdings: &[Holding]) -> Vec<Profession
     plans
 }
 
+#[allow(clippy::too_many_arguments)]
 fn one(
     character: &str,
     profession: &str,
     cache: &ProfessionRecipes,
     level: u16,
+    flavor: Option<&str>,
     market: &Option<String>,
     held: &BTreeMap<(Option<String>, u32), &Holding>,
 ) -> ProfessionPlan {
@@ -363,7 +396,7 @@ fn one(
     let recipes = cache.recipes.as_deref().unwrap_or(&[]);
 
     let training = match (cache.rank, cache.max_rank) {
-        (Some(rank), Some(max)) => training(rank, max, level),
+        (Some(rank), Some(max)) => training(rank, max, level, flavor),
         _ => {
             notes.push("Rank was not captured, so nothing can be said about training.".to_string());
             Training::NotYet
