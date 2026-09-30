@@ -20,6 +20,7 @@ use wow_coach_core::crafting;
 use wow_coach_core::economy;
 use wow_coach_core::gap::{self, KnownCharacter};
 use wow_coach_core::history::{self, History, Snapshot, XpGain};
+use wow_coach_core::professions;
 use wow_coach_core::quests;
 use wow_coach_core::roster::{self, Role, RosterConfig};
 use wow_coach_core::travel;
@@ -56,6 +57,7 @@ USAGE:
     wow-coach economy [--all] [--prices <path>] [--file <path>] [--config <path>]
     wow-coach craft [--all] [--prices <path>] [--file <path>] [--config <path>]
     wow-coach quests [<character>] [--all] [--file <path>] [--config <path>]
+    wow-coach professions [<character>] [--prices <path>] [--file <path>] [--config <path>]
     wow-coach travel [<destination>] [--file <path>] [--config <path>]
     wow-coach where
 
@@ -195,6 +197,12 @@ fn run(args: &[String]) -> Result<(), String> {
             file.as_deref(),
             &config_path,
             if show_all { usize::MAX } else { DEFAULT_LIMIT },
+        ),
+        "professions" => show_professions(
+            positional.first().copied(),
+            file.as_deref(),
+            prices_path.as_deref(),
+            &config_path,
         ),
         "travel" => show_travel(positional.first().copied(), file.as_deref(), &config_path),
         "next" => show_next(file.as_deref(), &config_path),
@@ -1737,6 +1745,127 @@ fn margin_text(craftable: &crafting::Craftable) -> String {
 
 fn crafter_text(craftable: &crafting::Craftable) -> String {
     format!("{} ({})", craftable.crafter, craftable.profession)
+}
+
+/// What to craft to raise a profession, and whether a trainer is due.
+///
+/// Separate from `craft` on purpose. That command ranks by margin; this one
+/// ranks by what advances the skill, and the two orders are close to
+/// opposite — the recipe that levels a profession is usually the one nobody
+/// wants to buy.
+fn show_professions(
+    who: Option<&str>,
+    file: Option<&Path>,
+    prices_path: Option<&Path>,
+    config_path: &Path,
+) -> Result<(), String> {
+    let (characters, notices, _) = gather(file)?;
+    let config = load_config(config_path);
+    let entries = roster::roster(&characters, &config);
+    // Prices are not the point here, but the survey is how holdings get
+    // gathered and priced, and an unpriced reagent is still a reagent you
+    // have. Price problems are reported, never fatal.
+    let (prices, price_problems) = load_prices(prices_path);
+    let survey = economy::survey(&entries, &prices);
+    let holdings: Vec<_> = survey
+        .holdings
+        .iter()
+        .chain(&survey.unpriced)
+        .cloned()
+        .collect();
+    let plans = professions::plan(&entries, &holdings);
+
+    for problem in &price_problems {
+        eprintln!("note: {problem}");
+    }
+
+    for notice in &notices {
+        eprintln!("note: {notice}");
+    }
+
+    let chosen: Vec<&professions::ProfessionPlan> = match who {
+        Some(name) => plans
+            .iter()
+            .filter(|plan| plan.character.eq_ignore_ascii_case(name))
+            .collect(),
+        None => plans.iter().collect(),
+    };
+
+    if chosen.is_empty() {
+        println!(
+            "No professions captured. Open each profession window once in game, then log out."
+        );
+        return Ok(());
+    }
+
+    let mut current = String::new();
+    for plan in chosen {
+        if plan.character != current {
+            if !current.is_empty() {
+                println!();
+            }
+            println!("{}", plan.character);
+            current = plan.character.clone();
+        }
+
+        let rank = match (plan.rank, plan.max_rank) {
+            (Some(rank), Some(max)) => format!("{rank}/{max}"),
+            _ => "?".to_string(),
+        };
+        println!("  {:<14} {:>8}", plan.profession, rank);
+
+        if let Some(line) = professions::describe(&plan.training, &plan.profession) {
+            println!("      {line}");
+        }
+
+        // Makeable first, and only a few: this is what to do next, not a
+        // catalogue of everything known.
+        let makeable: Vec<_> = plan
+            .skill_ups
+            .iter()
+            .filter(|entry| entry.is_makeable())
+            .take(3)
+            .collect();
+        for entry in &makeable {
+            println!(
+                "      craft {:<34} {:<8} x{}{}",
+                entry.recipe,
+                entry.difficulty.colour(),
+                entry.can_make,
+                if entry.needs_a_bank_trip {
+                    " (via the bank)"
+                } else {
+                    ""
+                }
+            );
+        }
+
+        // One short line for the best thing they cannot make yet, because
+        // "buy two more of this" is often the actual next step.
+        if let Some(blocked) = plan
+            .skill_ups
+            .iter()
+            .find(|entry| !entry.is_makeable() && !entry.short_of.is_empty())
+        {
+            let missing: Vec<String> = blocked
+                .short_of
+                .iter()
+                .map(|(name, count)| format!("{name} x{count}"))
+                .collect();
+            println!(
+                "      short  {:<34} {:<8} needs {}",
+                blocked.recipe,
+                blocked.difficulty.colour(),
+                missing.join(", ")
+            );
+        }
+
+        for note in &plan.notes {
+            println!("      Note: {note}");
+        }
+    }
+
+    Ok(())
 }
 
 /// Who can get you where.

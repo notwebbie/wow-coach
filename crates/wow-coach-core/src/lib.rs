@@ -7,6 +7,7 @@ pub mod economy;
 pub mod gap;
 pub mod history;
 pub mod lua;
+pub mod professions;
 pub mod quests;
 pub mod rested;
 pub mod roster;
