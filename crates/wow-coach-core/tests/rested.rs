@@ -49,10 +49,15 @@ fn a_measured_rate_says_how_many_samples_it_rests_on() {
     let model = rested::model_for(Some("forever"));
     match model.rate_basis {
         Basis::Measured { samples, note } => {
-            assert!(samples > 0);
+            assert!(samples >= 4, "the 152 hour run added two more readings");
             assert!(
-                note.contains("startup delay"),
-                "the unresolved alternative belongs in the record, not just the commit message"
+                note.contains("152 hours"),
+                "the length of the run is what makes the number trustworthy"
+            );
+            assert!(
+                note.contains("4.8%"),
+                "the hypothesis this run ruled out belongs in the record, not only in \
+                 the commit message — otherwise the next person re-opens a settled question"
             );
         }
         other => panic!("expected a measured rate, got {other:?}"),
@@ -104,24 +109,42 @@ fn hours_to_cap_needs_both_numbers_not_just_the_rate() {
 }
 
 #[test]
-fn the_forever_rate_matches_what_was_actually_observed() {
-    // Guards the number against a careless edit: 26 hours of resting at this
-    // rate must reproduce roughly the 62 exhaustion that was measured, at the
-    // level 1 maxXP of 400 it was measured at.
+fn the_forever_rate_matches_the_long_run_not_the_short_one() {
+    // Guards the number against a careless edit, and against the earlier
+    // conclusion creeping back. 152 hours of resting at this rate must
+    // reproduce roughly the 376 exhaustion measured, at the level 1 maxXP of
+    // 400 it was measured at.
     let model = rested::model_for(Some("forever"));
     let per_hour = model.xp_per_hour(400).expect("rate known");
-    let after_26h = per_hour * 25.99;
+
+    let after_152h = per_hour * 152.10;
     assert!(
-        (after_26h - 62.0).abs() < 2.0,
-        "26 hours should land near the observed 62, got {after_26h}"
+        (after_152h - 376.0).abs() < 6.0,
+        "152 hours should land near the observed 376, got {after_152h}"
     );
 
-    // And it must be visibly below Classic's, which predicted 65.
-    let classic = rested::model_for(Some("tbc_classic"));
+    // The hypothesis this run killed. A flat 4.8% predicts 365 over the same
+    // span, eleven short of what was seen, so the model must not drift back
+    // toward it.
+    let flat_48: f64 = 0.048 * 400.0 / 8.0 * 152.10;
     assert!(
-        per_hour < classic.xp_per_hour(400).unwrap(),
-        "the measurement came in under Classic's rate and the model should say so"
+        (after_152h - 376.0).abs() < (flat_48 - 376.0).abs(),
+        "the model must fit the measurement better than the rate it ruled out"
     );
+
+    // It landed on Classic's rate. Equal by measurement rather than by
+    // definition, which is why the two models stay separate functions.
+    let classic = rested::model_for(Some("tbc_classic"));
+    assert_eq!(
+        model.rate_per_8h, classic.rate_per_8h,
+        "the measurement came in at Classic's 5%"
+    );
+
+    // But not Classic's certainty: the cap is still unobserved here, and that
+    // is what gates the ranking.
+    assert!(model.cap_levels.is_none());
+    assert!(!model.cap_basis.is_known());
+    assert!(classic.cap_basis.is_known());
 }
 
 #[test]

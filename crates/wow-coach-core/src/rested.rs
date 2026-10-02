@@ -15,33 +15,51 @@
 //!
 //! # What was measured on Forever, and what was not
 //!
-//! Measured on the beta, 26–27 September 2026, one level 1 character parked in
-//! an inn with `maxXP` 400 and no Legacy points:
+//! Measured on the beta between 26 September and 2 October 2026, one level 1
+//! character parked in an inn with `maxXP` 400 and no Legacy points:
 //!
-//! | elapsed | exhaustion | implied rate |
-//! |---|---|---|
-//! | 2.93 h | 6 | 4.09% of a level per 8 h |
-//! | 25.99 h | 62 | 4.77% |
+//! | elapsed | exhaustion | implied rate | 5% predicts | 4.8% predicts |
+//! |---|---|---|---|---|
+//! | 2.93 h | 6 | 4.09% of a level per 8 h | 7.3 | 7.0 |
+//! | 25.99 h | 62 | 4.77% | 65.0 | 62.4 |
+//! | **152.10 h** | **376** | **4.94%** | **380.2** | **365.0** |
 //!
-//! The second reading is the trustworthy one — twenty-six hours of accrual
-//! against integers that round to under a percent, where the first spans three
-//! hours and six whole numbers. Between the two readings the rate works out at
-//! **4.86%**, and the pair fit exactly if accrual is 4.86% per 8 h starting
-//! about 28 minutes after the character begins resting.
+//! **The rate is Classic's 5%.** The third reading settles what the first two
+//! could not. A flat 4.8% predicts 365 against 376 observed — eleven short,
+//! far outside what integer rounding can absorb — while 5% predicts 380, four
+//! over.
 //!
-//! So two explanations survive, and they are not distinguished by this data:
-//! a flat rate near **4.8%** of a level per 8 hours, or Classic's **5%** with a
-//! startup delay. Classic's 5% with no delay predicts 65 at 26 hours against
-//! the 62 observed, which is further out than rounding allows.
+//! The shape of the error is the evidence. The implied rate climbs 4.09% →
+//! 4.77% → 4.94%, approaching 5% from below and never passing it. That is what
+//! a fixed loss at the start of a run looks like once the run is long enough to
+//! dilute it; a genuinely lower rate would have held steady instead. At a true
+//! 5% the whole run is short by **1.7 hours** of accrual, which is why the
+//! short readings looked like a slower rate and the long one does not.
 //!
-//! A longer parked run separates them: a startup delay is a fixed subtraction
-//! and washes out over days, where a lower rate does not. Until then the value
-//! here is the measurement, not the mechanic.
+//! The 26-hour reading was therefore *not* a measurement of the rate. It was a
+//! measurement of the rate plus a startup loss, reported as the rate, and it
+//! would have put 4.86% in this file permanently had the longer run not been
+//! run. That is the argument for measuring over days rather than hours, and it
+//! is the reason this module records sample counts.
 //!
-//! **The cap is still unmeasured.** 62 of a possible 600, if Forever keeps
-//! Classic's 1.5 levels, is a tenth of the way there. Nothing observed so far
-//! bears on where the bar stops, and the Legacy "Well Rested" perk is expected
-//! to move it.
+//! **The cap is still unmeasured**, and now meaningfully closer. 376 of a
+//! possible 600, if Forever keeps Classic's 1.5 levels, is 63% of the way
+//! there. Roughly 90 more parked hours would reach it, and the bar flattening
+//! is what proves a cap exists — nothing so far has. The Legacy "Well Rested"
+//! perk is still expected to move it.
+//!
+//! # One character per fit
+//!
+//! The probe does **not** record which character a sample belongs to, and this
+//! run nearly paid for it. A second level 2 character on the same account was
+//! accruing its own rest, and its sample (exhaustion 150, `maxXP` 900) sits
+//! directly beside the one used here in the same file. It was excluded only
+//! because `isResting` happened to be false at that instant — luck, not
+//! design. Two characters averaged together would have produced a plausible
+//! rate that was wrong, with nothing in the output to say so.
+//!
+//! Until the probe stamps a character key on each sample, every fit must be
+//! filtered by `maxXP` and `xp` first. Here that is `maxXP` 400 at 155 XP.
 //!
 //! The run is archived at `tools/WoWCoachProbe/results/`, and
 //! `cargo run -p wow-coach-core --example rested -- <file>` reproduces the fit
@@ -126,21 +144,28 @@ fn classic() -> RestedModel {
     }
 }
 
-/// WoW Forever: the rate is measured, the cap is not.
+/// WoW Forever: the rate is measured and matches Classic's; the cap is not.
+///
+/// Kept as its own function rather than delegating to [`classic`], even though
+/// the rate is now the same number. The two are equal by measurement, not by
+/// definition, and the cap is still unknown here — folding them together would
+/// quietly grant Forever a cap nobody has observed.
 fn forever() -> RestedModel {
     RestedModel {
-        rate_per_8h: Some(0.0486),
+        rate_per_8h: Some(0.05),
         rate_basis: Basis::Measured {
-            samples: 2,
-            note: "one level 1 character parked 26 hours in an inn with no Legacy points; \
-                   consistent with a flat 4.8% or with Classic's 5% after a ~28 minute \
-                   startup delay, which this data cannot separate",
+            samples: 4,
+            note: "one level 1 character parked 152 hours in an inn with no Legacy points; \
+                   376 exhaustion against 380 predicted by Classic's 5% and 365 by a flat \
+                   4.8%, which this run rules out. The implied rate climbs 4.09% -> 4.77% \
+                   -> 4.94% toward 5% without passing it, the signature of about 1.7 hours \
+                   of accrual lost at the start rather than of a slower rate",
         },
         cap_levels: None,
         cap_basis: Basis::Unknown {
             why: "the rested cap has never been observed on this client — the longest run \
-                  reached a tenth of Classic's cap — and the Legacy \"Well Rested\" perk is \
-                  expected to change it",
+                  reached 376 of Classic's 600, with no sign of flattening — and the Legacy \
+                  \"Well Rested\" perk is expected to change it",
         },
     }
 }
