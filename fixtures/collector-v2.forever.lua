@@ -79,9 +79,13 @@ WoWCoachCollectorDB = {
 							["spellID"] = 2330,
 						},
 						{
-							["difficulty"] = "optimal",
+							["difficulty"] = "trivial",
 							["name"] = "Lesser Healing Potion",
 							["spellID"] = 2337,
+						},
+						{
+							["name"] = "Recipe From A Later Client",
+							["spellID"] = 9999,
 						},
 					},
 				},

@@ -24,6 +24,34 @@ pub const KNOWN_SCHEMA_VERSION: u16 = 2;
 
 /// The global the addon writes.
 pub const SAVED_VARIABLE: &str = "WoWCoachCollectorDB";
+/// Read a recipe difficulty whether it arrives as a word or as an enum value.
+///
+/// 0 Optimal, 1 Medium, 2 Easy, 3 Trivial — the modern client's
+/// `Enum.TradeskillRelativeDifficulty`, verified against its API page. A
+/// number outside that range becomes `None` rather than a guess, which the
+/// reader already treats as "unrated, might still raise the skill".
+fn difficulty_word<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum WordOrEnum {
+        Word(String),
+        Code(i64),
+    }
+
+    Ok(match Option::<WordOrEnum>::deserialize(deserializer)? {
+        Some(WordOrEnum::Word(word)) => Some(word),
+        Some(WordOrEnum::Code(0)) => Some("optimal".to_string()),
+        Some(WordOrEnum::Code(1)) => Some("medium".to_string()),
+        Some(WordOrEnum::Code(2)) => Some("easy".to_string()),
+        Some(WordOrEnum::Code(3)) => Some("trivial".to_string()),
+        Some(WordOrEnum::Code(_)) | None => None,
+    })
+}
 
 /// Accept an empty Lua table where a list is expected.
 ///
@@ -338,6 +366,19 @@ pub struct ProfessionRecipes {
 pub struct Recipe {
     pub name: Option<String>,
     /// The game's own classification: optimal, medium, easy, trivial.
+    ///
+    /// Accepts a number as well as a word, and this tolerance is the point.
+    /// The modern client reports `Enum.TradeskillRelativeDifficulty` — a plain
+    /// integer — where Classic reports a string, and a collector that sent the
+    /// raw enum made this one field reject the entire capture: every
+    /// character, every bag, every quest, over one recipe's difficulty.
+    ///
+    /// The addon now normalises it, so this should not arrive as a number
+    /// again. It stays lenient anyway, because the version policy in
+    /// `docs/COLLECTOR-SCHEMA.md` promises a player who updates the addon
+    /// first still sees their data, and that promise is worth nothing if a
+    /// field's *type* can do what a version bump is not allowed to do.
+    #[serde(deserialize_with = "difficulty_word")]
     pub difficulty: Option<String>,
     #[serde(rename = "spellID")]
     pub spell_id: Option<u32>,

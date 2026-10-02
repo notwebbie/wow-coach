@@ -636,6 +636,29 @@ local function craftReagents(index)
     return reagents
 end
 
+-- The same fact, reported two ways by two client families.
+--
+-- The Classic path gets "optimal"/"medium"/"easy"/"trivial" as strings from
+-- `GetTradeSkillInfo`. The modern path gets `Enum.TradeskillRelativeDifficulty`,
+-- a plain integer, and storing it raw put a number where every reader expects a
+-- word — which the Rust side rejected outright, taking the whole file with it.
+--
+-- Normalising here is the same job `captureSkills` does for isCollapsed versus
+-- isExpanded: one schema out of two client shapes. It is not a judgement. The
+-- four names are the client's own, and this only translates between the two
+-- ways it spells them.
+--
+-- An unrecognised value becomes nil rather than a guess. Absent already means
+-- "not captured" everywhere in this schema, and the reader treats an unrated
+-- recipe as one that might still raise the skill — the safe direction. A
+-- client that adds a fifth state therefore degrades instead of lying.
+local RELATIVE_DIFFICULTY = { [0] = "optimal", [1] = "medium", [2] = "easy", [3] = "trivial" }
+
+local function relativeDifficultyName(value)
+    if type(value) ~= "number" then return nil end
+    return RELATIVE_DIFFICULTY[value]
+end
+
 local function captureTradeSkillUI()
     if not has("C_TradeSkillUI.GetBaseProfessionInfo") then return nil end
     if has("C_TradeSkillUI.IsTradeSkillReady") and not C_TradeSkillUI.IsTradeSkillReady() then
@@ -655,7 +678,7 @@ local function captureTradeSkillUI()
         if type(recipe) == "table" and recipe.name then
             local entry = {
                 name = recipe.name, spellID = recipeID,
-                difficulty = recipe.relativeDifficulty,
+                difficulty = relativeDifficultyName(recipe.relativeDifficulty),
             }
             -- The modern client describes a recipe as a schematic rather than
             -- an indexed list, so reagents come from a different shape than

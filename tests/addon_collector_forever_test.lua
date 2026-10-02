@@ -145,11 +145,22 @@ function C_TradeSkillUI.GetBaseProfessionInfo()
 end
 function C_TradeSkillUI.GetAllRecipeIDs()
     if not trade_ready then return {} end
-    return { 2330, 2337 }
+    return { 2330, 2337, 9999 }
 end
+-- relativeDifficulty is Enum.TradeskillRelativeDifficulty: an INTEGER, where
+-- the Classic path returns a word. This stub said "optimal" until the live
+-- beta proved otherwise, and that lie is why the harness passed while the real
+-- client produced a file the reader rejected outright. 0 Optimal, 1 Medium,
+-- 2 Easy, 3 Trivial; 99 stands in for a value a later client might add.
+local recipe_difficulty = { [2330] = 0, [2337] = 3, [9999] = 99 }
 function C_TradeSkillUI.GetRecipeInfo(recipeID)
-    local names = { [2330] = "Minor Healing Potion", [2337] = "Lesser Healing Potion" }
-    return { name = names[recipeID], relativeDifficulty = "optimal", categoryID = 1 }
+    local names = { [2330] = "Minor Healing Potion", [2337] = "Lesser Healing Potion",
+        [9999] = "Recipe From A Later Client" }
+    return {
+        name = names[recipeID],
+        relativeDifficulty = recipe_difficulty[recipeID],
+        categoryID = 1,
+    }
 end
 
 local frame = { events = {}, scripts = {} }
@@ -268,11 +279,31 @@ frame:Fire("TRADE_SKILL_LIST_UPDATE")
 local recipes = record().recipes
 check(recipes and recipes.Alchemy, "trade skill stored under the profession")
 check(recipes and recipes.Alchemy and recipes.Alchemy.rank == 225, "profession rank stored")
-check(recipes and recipes.Alchemy and #recipes.Alchemy.recipes == 2, "recipes enumerated")
+check(recipes and recipes.Alchemy and #recipes.Alchemy.recipes == 3, "recipes enumerated")
 check(recipes and recipes.Alchemy and recipes.Alchemy.recipes[1].spellID == 2330,
     "recipe id retained")
 check(recipes and recipes.Alchemy and recipes.Alchemy.capturedAt == world.now,
     "recipes are a cache and must be timestamped")
+
+-- Difficulty must come out as the same word the Classic path produces. The
+-- client reports an enum integer here; storing it raw put a number where every
+-- reader expects a word and made the Rust side reject the whole file — every
+-- character, every bag, over one recipe field.
+local by_id = {}
+for _, r in ipairs(recipes and recipes.Alchemy and recipes.Alchemy.recipes or {}) do
+    by_id[r.spellID] = r
+end
+check(by_id[2330] and by_id[2330].difficulty == "optimal",
+    "enum 0 must be normalised to the word the Classic path uses")
+check(by_id[2337] and by_id[2337].difficulty == "trivial", "enum 3 is trivial")
+check(by_id[2330] and type(by_id[2330].difficulty) == "string",
+    "difficulty is a string in this schema whatever the client returns")
+-- A value this build has never heard of must drop out, not be guessed at.
+-- Absent already means "not captured" everywhere here, and the reader treats
+-- an unrated recipe as one that might still raise the skill.
+check(by_id[9999] ~= nil, "an unknown difficulty must not drop the recipe itself")
+check(by_id[9999] and by_id[9999].difficulty == nil,
+    "an unrecognised enum value becomes absent rather than a guess")
 
 -- With the window closed the API is not ready; the cached data must survive.
 trade_ready = false
