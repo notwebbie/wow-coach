@@ -47,15 +47,28 @@
 //! and an answer that quietly assumed two crafting sessions were one would be
 //! worse than the shallow one. Left shallow, and named.
 //!
-//! **Gathering professions cannot appear here at all.** Everything below is
-//! keyed off the recipe cache, which is the only locale-independent evidence
-//! that a skill is a trade skill (see `economy::SkillEntry::advice_is_safe`).
-//! Skinning and Herbalism have no trade skill window and so no recipes, so a
-//! skinner sitting at their cap gets no "train Expert" line even though the
-//! arithmetic is the same. Mining escapes this only because Smelting gives it
-//! a window. Fixing it means a second, trusted way to tell a gathering skill
-//! from a language or a weapon proficiency, which is the exact problem the
-//! recipe-cache rule was adopted to avoid guessing at.
+//! **Gathering professions appear on some clients and not others**, and the
+//! difference is the game's, not this module's. Everything below is keyed off
+//! the recipe cache, which is the only locale-independent evidence that a
+//! skill is a trade skill (see `economy::SkillEntry::advice_is_safe`).
+//!
+//! On Classic and Burning Crusade, Skinning and Herbalism have no trade skill
+//! window and therefore no recipes, so a skinner sitting at their cap gets no
+//! "train Expert" line even though the arithmetic is identical. Mining escapes
+//! only because Smelting gives it a window.
+//!
+//! On WoW Forever they do appear, and the reason is camping. Every profession
+//! gained campsite structures to craft — a live capture shows Herbalism at
+//! 38/75 holding Seed Hybridizer, Greenhouse and Incense Candle — so Herbalism
+//! has a window there and flows through here like any other trade skill. The
+//! same change inflated Alchemy from 8 recipes on Burning Crusade to **197**
+//! at skill 23 on Forever.
+//!
+//! This is worth stating because the first version of this comment asserted
+//! the gap was universal, and live data from one client disproved it inside a
+//! week. The rule that survived is narrower and truer: a profession appears
+//! here exactly when the client gives it a trade skill window, which is a fact
+//! the capture reports rather than a property of the profession.
 
 use std::collections::{BTreeMap, BTreeSet};
 

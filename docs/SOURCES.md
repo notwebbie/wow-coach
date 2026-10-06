@@ -122,6 +122,13 @@ If it is closed, the shape is a path file the **player supplies** and the tool
 reads — the same relationship as the roster config. The tool ships none, so
 nothing is redistributed and nothing goes stale in a release.
 
+**Camping is a Forever system the collector does not model.** Every profession
+there gained campsite structures, which arrive as ordinary recipes — a live
+capture shows Herbalism holding Seed Hybridizer, Greenhouse and Incense Candle,
+and Alchemy carrying 197 recipes at skill 23 against 8 on Burning Crusade. The
+tool reads them as recipes like any other, which is correct as far as it goes
+and says nothing about campsites, buffs or what a structure does.
+
 **It will not present unsourced recall as fact.** A planning document that
 mixes checked and unchecked claims without marking which is which is worse than
 one that checks nothing, because it lends the unchecked parts the credibility
