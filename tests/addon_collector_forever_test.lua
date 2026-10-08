@@ -68,6 +68,22 @@ function C_SkillInfo.GetSkillLineInfo(index)
              rank = 150, tempPoints = 0, modifier = 0, maxRank = 300, parentSkillLineID = 0 }
 end
 
+-- GetProfessions: sparse on purpose, in the shape the live beta returned
+-- (6,7,5,nil,8,nil on build 70235). The hole at slot 4 is the trap — a reader
+-- that walks this with ipairs stops there and silently loses Cooking, which is
+-- exactly how the probe that found this API under-reported. Index 5 resolves
+-- to First Aid in the slot the documented signature calls archaeology, so a
+-- reader that trusts position over GetProfessionInfo gets a wrong name rather
+-- than a missing one.
+function GetProfessions() return 6, 7, 5, nil, 8, nil end
+function GetProfessionInfo(index)
+    if index == 5 then return "First Aid", nil, 72, 150, 0, 0, 129 end
+    if index == 6 then return "Alchemy", nil, 225, 300, 0, 0, 171 end
+    if index == 7 then return "Herbalism", nil, 150, 300, 0, 0, 182 end
+    if index == 8 then return "Cooking", nil, 40, 75, 0, 0, 185 end
+    return nil
+end
+
 -- C_QuestLog: completion is keyed by questID, NOT by log index. IsComplete
 -- returns true only for the real questID, so passing the index fails loudly.
 C_QuestLog = {}
@@ -234,6 +250,34 @@ check(linen and linen.count == 32, "stacks summed across bags")
 
 -- No pet on a mage.
 check(snap.pet == nil, "no pet should mean no pet record")
+
+--------------------------------------------------------------------------------
+-- Professions
+--
+-- The point of this capture is to tell a trade skill from a language without
+-- reading a name, so the assertions are about completeness and identity, not
+-- about where in the return each one sat.
+--------------------------------------------------------------------------------
+
+local slots = snap.professions
+check(slots ~= nil, "professions captured where GetProfessions exists")
+check(slots and #slots == 4,
+    "every non-nil slot is read, including the one past the hole (ipairs would stop at 3)")
+
+local byName = {}
+for _, slot in ipairs(slots or {}) do byName[slot.name] = slot end
+check(byName.Cooking ~= nil, "Cooking sits after the nil at slot 4 and must survive it")
+check(byName["First Aid"] and byName["First Aid"].skillLine == 129,
+    "the skill line id is read from GetProfessionInfo, not inferred from the slot")
+check(byName["First Aid"] and byName["First Aid"].slot == 3,
+    "the slot is recorded as a fact — position 3 holds First Aid on this client")
+check(byName.Herbalism and byName.Herbalism.rank == 150 and byName.Herbalism.maxRank == 300,
+    "rank comes from GetProfessionInfo, which answers for gathering skills too")
+check(byName.Herbalism and byName.Herbalism.index == 7, "the index passed to GetProfessionInfo is kept")
+-- Herbalism is the whole reason this exists: it is a profession here and the
+-- skill list cannot say so.
+check(byName.Alchemy ~= nil and byName.Herbalism ~= nil,
+    "both primaries present")
 
 --------------------------------------------------------------------------------
 -- A future patch moves the interface number

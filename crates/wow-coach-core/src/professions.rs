@@ -47,28 +47,37 @@
 //! and an answer that quietly assumed two crafting sessions were one would be
 //! worse than the shallow one. Left shallow, and named.
 //!
-//! **Gathering professions appear on some clients and not others**, and the
-//! difference is the game's, not this module's. Everything below is keyed off
-//! the recipe cache, which is the only locale-independent evidence that a
-//! skill is a trade skill (see `economy::SkillEntry::advice_is_safe`).
+//! **A profession with no trade skill window used to be invisible here.** That
+//! is now fixed rather than documented, and the history is worth keeping,
+//! because the fix only arrived after the limitation had been written down
+//! wrongly twice.
 //!
-//! On Classic and Burning Crusade, Skinning and Herbalism have no trade skill
-//! window and therefore no recipes, so a skinner sitting at their cap gets no
-//! "train Expert" line even though the arithmetic is identical. Mining escapes
-//! only because Smelting gives it a window.
+//! Everything here was once keyed off the recipe cache, which was the only
+//! locale-independent evidence that a skill was a trade skill at all — the
+//! skill list mixes in languages, weapon skills and armour proficiencies, and
+//! telling those apart there means matching a name in the player's own locale.
+//! The cost was that Skinning on Burning Crusade has no window, so a skinner
+//! sitting at their cap got no "train Expert" line even though the arithmetic
+//! is identical. Mining escaped only because Smelting gives it a window.
 //!
-//! On WoW Forever they do appear, and the reason is camping. Every profession
-//! gained campsite structures to craft — a live capture shows Herbalism at
-//! 38/75 holding Seed Hybridizer, Greenhouse and Incense Candle — so Herbalism
-//! has a window there and flows through here like any other trade skill. The
-//! same change inflated Alchemy from 8 recipes on Burning Crusade to **197**
-//! at skill 23 on Forever.
+//! The first version of this comment called that gap a property of gathering
+//! professions. Live Forever data disproved it inside a week: camping gave
+//! every profession campsite structures to craft, so Herbalism has a window
+//! there, sitting at 38/75 holding Seed Hybridizer and a Greenhouse — and the
+//! same change took Alchemy from 8 recipes on Burning Crusade to **197** at
+//! skill 23. The second version said instead that a profession appears here
+//! exactly when the client gives it a trade skill window. True, and still a
+//! limitation wearing a rule's clothes.
 //!
-//! This is worth stating because the first version of this comment asserted
-//! the gap was universal, and live data from one client disproved it inside a
-//! week. The rule that survived is narrower and truer: a profession appears
-//! here exactly when the client gives it a trade skill window, which is a fact
-//! the capture reports rather than a property of the profession.
+//! `GetProfessions` is the second signal that removes it. It is the game's own
+//! list of which skills are professions: no window needed, no names matched,
+//! and it answers for Skinning and Alchemy alike. A profession it reports with
+//! no recipe cache now produces a plan with the training assessment filled in
+//! and no skill-ups, which is the exact shape of the truth — trainer advice is
+//! arithmetic on rank and level, and craft advice really does need the window.
+//!
+//! One honest gap is left: a client offering neither `GetProfessions` nor a
+//! window stays silent, and should.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -291,6 +300,12 @@ pub struct ProfessionPlan {
     /// Recipes that can still raise the skill, best first: makeable before
     /// not, then orange before yellow before green.
     pub skill_ups: Vec<SkillUp>,
+    /// Whether a trade skill window has ever been scraped for this.
+    ///
+    /// False means the recipe list is unknown, not empty, and the two must
+    /// never be shown the same way: "nothing left to make" and "never looked"
+    /// lead a reader in opposite directions.
+    pub has_recipe_cache: bool,
     pub notes: Vec<String>,
 }
 
@@ -305,8 +320,12 @@ impl ProfessionPlan {
     /// The state that reads as "nothing to do" and means the opposite: the
     /// player needs recipes, not materials, and no amount of crafting what
     /// they have will move the number.
+    ///
+    /// False without a recipe cache. An empty list there means the window has
+    /// never been opened, and reporting that as "out of recipes" would be the
+    /// same confident wrong answer in a different place.
     pub fn out_of_useful_recipes(&self) -> bool {
-        self.skill_ups.is_empty()
+        self.has_recipe_cache && self.skill_ups.is_empty()
     }
 }
 
@@ -362,6 +381,11 @@ fn how_many(
 /// Every character counts, whatever its role. A bank alt's professions are
 /// most of the reason it exists, and a parked character's half-levelled
 /// tailoring is still a fact about the account.
+///
+/// Two sources, merged on the client's own name for each profession. The
+/// client's profession list contributes the set — every profession, window or
+/// not — and the recipe cache contributes what can be made. A profession in
+/// both is one plan, not two.
 pub fn plan(entries: &[RosterEntry<'_>], holdings: &[Holding]) -> Vec<ProfessionPlan> {
     let mut held: BTreeMap<(Option<String>, u32), &Holding> = BTreeMap::new();
     for holding in holdings {
@@ -374,14 +398,46 @@ pub fn plan(entries: &[RosterEntry<'_>], holdings: &[Holding]) -> Vec<Profession
         let market =
             crate::auctionator::realm_key(record.realm.as_deref(), record.faction.as_deref());
         let level = record.level.unwrap_or(0);
+        let flavor = record.game_flavor.as_deref();
+        let empty = ProfessionRecipes::default();
 
+        let mut planned: BTreeSet<&str> = BTreeSet::new();
         for (profession, cache) in record.recipes.iter().flatten() {
+            planned.insert(profession.as_str());
             plans.push(one(
                 entry.name(),
                 profession,
                 cache,
+                true,
                 level,
-                record.game_flavor.as_deref(),
+                flavor,
+                &market,
+                &held,
+            ));
+        }
+
+        // A profession the client lists but whose window has never been
+        // opened. There is nothing to craft from, and the trainer question is
+        // answerable anyway — which is the whole point of reading the list.
+        for slot in record.professions.iter().flatten() {
+            let Some(profession) = slot.name.as_deref() else {
+                continue;
+            };
+            if planned.contains(profession) {
+                continue;
+            }
+            let cache = ProfessionRecipes {
+                rank: slot.rank,
+                max_rank: slot.max_rank,
+                ..empty.clone()
+            };
+            plans.push(one(
+                entry.name(),
+                profession,
+                &cache,
+                false,
+                level,
+                flavor,
                 &market,
                 &held,
             ));
@@ -403,6 +459,7 @@ fn one(
     character: &str,
     profession: &str,
     cache: &ProfessionRecipes,
+    has_recipe_cache: bool,
     level: u16,
     flavor: Option<&str>,
     market: &Option<String>,
@@ -465,9 +522,19 @@ fn one(
             "{without_reagents} recipe(s) have no reagents captured, so they are listed as unmakeable rather than free. Open the profession window again."
         ));
     }
-    if !recipes.is_empty() && skill_ups.is_empty() {
+    if has_recipe_cache && !recipes.is_empty() && skill_ups.is_empty() {
         notes.push(
             "Every known recipe here is grey. More crafting will not raise this skill — it needs new recipes from a trainer or a drop."
+                .to_string(),
+        );
+    }
+    if !has_recipe_cache {
+        // Said plainly, because the silence it replaces was read as "this
+        // profession has nothing to do" for as long as the recipe cache was
+        // the only source. The rank and the trainer line above are real; the
+        // absence of crafts below is missing data, not an answer.
+        notes.push(
+            "The client lists this as a profession but its window has never been opened, so no recipes are known here. Open it once in game if it has one — some gathering skills do not."
                 .to_string(),
         );
     }
@@ -479,6 +546,7 @@ fn one(
         max_rank: cache.max_rank,
         training,
         skill_ups,
+        has_recipe_cache,
         notes,
     }
 }

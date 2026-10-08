@@ -21,6 +21,20 @@ Prefer it always. When the client already answers a question — "is this recipe
 still orange?" — re-deriving the answer from a guide is guessing at something
 already known, and it rots.
 
+A worked example of why, and of the one care this category needs. The question
+"is this skill a profession or a language?" was answered for a year by the
+recipe cache, which is evidence but partial: a skill with no trade skill window
+never appears in it, so a capped skinner got silence. `GetProfessions` answers
+it directly, and the collector now reads it. Its documented signature —
+`prof1, prof2, archaeology, fishing, cooking, firstAid`
+([wowprogramming](https://wowprogramming.com/docs/api/GetProfessions.html)) —
+does **not** match what the Forever beta returned on build 70235: `6, 7, 5,
+nil, 8, nil`, where index 5 is First Aid, sitting in the slot the documentation
+calls archaeology. Rather than pick a winner, the collector reads no meaning
+from position at all and asks `GetProfessionInfo` for each index, which names
+the profession itself. A client-reported fact is still worth checking against
+its documentation; the answer here was to depend on less of it.
+
 **2. A constant in the code, with a source.** Facts the client does not report:
 what a teleport spell id means, where a training tier stops, how fast rested XP
 accrues. Every one of these is listed below with where it came from.
@@ -117,6 +131,14 @@ pretending away: `professions` can only advise on recipes the player already
 knows, because the recipe cache is what it reads. It can say "make the Linen
 Belt you know"; it cannot say "go and train Bolt of Mageweave next". A
 levelling path is precisely what would close that.
+
+A neighbouring gap has since closed, and the way it closed is the pattern to
+copy. "A profession with no trade skill window is invisible to this tool" was
+written down twice as a limitation — once wrongly, as a property of gathering
+professions, and once correctly but still as something to live with. It was
+fixed by finding a second thing the client already reports, not by adding a
+constant. When a limitation here looks structural, the first question is
+whether the game is willing to say it.
 
 If it is closed, the shape is a path file the **player supplies** and the tool
 reads — the same relationship as the roster config. The tool ships none, so

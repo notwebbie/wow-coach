@@ -340,6 +340,66 @@ local function captureSkills()
 end
 
 --------------------------------------------------------------------------------
+-- Professions
+--
+-- `captureSkills` above lists every skill line, which includes languages,
+-- weapon proficiencies and armour types alongside the trade skills, and gives
+-- no way to tell them apart that is not a name in the player's own language.
+-- `GetProfessions` does: it returns only the skills the game itself files as
+-- professions. That is the second, trusted signal the reader needs, and
+-- without it a gathering skill with no trade skill window — Skinning on
+-- Burning Crusade, say — was indistinguishable from Orcish.
+--
+-- TWO THINGS DELIBERATELY NOT ASSUMED
+--
+-- **The position of a return is not read as a meaning.** The documented
+-- signature is prof1, prof2, archaeology, fishing, cooking, firstAid, and a
+-- live Forever capture returned 6,7,5,nil,8,nil where slot 3 resolved to First
+-- Aid — so either the order differs on this client family or the documentation
+-- does, and nothing here needs to know which. Every returned index is passed
+-- straight to `GetProfessionInfo`, which names the profession itself. The slot
+-- is recorded as a fact in case the ordering is ever worth learning; it is
+-- never interpreted.
+--
+-- **Nils in the middle are not a terminator.** The returns are sparse by
+-- design, and `ipairs` over `{ GetProfessions() }` stops at the first hole —
+-- which is exactly how the probe that found this API under-reported a
+-- character's Cooking. The arity comes from `select("#", ...)` and every slot
+-- up to it is read.
+--
+-- Absent means not captured. An empty list means the client was asked and said
+-- the character has no professions, which is a different and useful fact.
+--------------------------------------------------------------------------------
+
+local function professionSlots(...)
+    local count = select("#", ...)
+    local slots = {}
+    for slot = 1, count do
+        local index = (select(slot, ...))
+        if type(index) == "number" then
+            local name, _, rank, maxRank, _, _, skillLine = GetProfessionInfo(index)
+            if name then
+                slots[#slots + 1] = {
+                    slot = slot,
+                    index = index,
+                    name = name,
+                    rank = rank,
+                    maxRank = maxRank,
+                    skillLine = skillLine,
+                }
+            end
+        end
+    end
+    return slots
+end
+
+local function captureProfessions()
+    if type(GetProfessions) ~= "function" then return nil end
+    if type(GetProfessionInfo) ~= "function" then return nil end
+    return professionSlots(GetProfessions())
+end
+
+--------------------------------------------------------------------------------
 -- Talents
 --
 -- Forever renders the vanilla three-tree layout through the retail Trait
@@ -848,6 +908,9 @@ function collector.capture()
         record.skills = skills
         record.skillsComplete = skillsComplete
     end
+
+    local professions = captureProfessions()
+    if professions then record.professions = professions end
 
     local spells = captureSpells()
     if spells then record.spells = spells end

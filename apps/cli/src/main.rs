@@ -1343,19 +1343,24 @@ fn show_economy(
             };
             // Advice only where the skill is *known* to be a trade skill.
             // Listing every skill was the point of this section, but a rank is
-            // a fact and "needs a trainer" is a judgement, and without the
-            // recipe cache there is nothing to base the judgement on. The
-            // first run of this printed "Language: Orcish 300/300 ← at its cap,
-            // needs training" — which is the exact nonsense the recipe-cache
-            // rule was written to stop, reintroduced one section further down.
-            let note = if !skill.has_recipes {
+            // a fact and "needs a trainer" is a judgement, and without evidence
+            // there is nothing to base the judgement on. The first run of this
+            // printed "Language: Orcish 300/300 ← at its cap, needs training" —
+            // the exact nonsense the trade-skill rule was written to stop,
+            // reintroduced one section further down.
+            let note = if !skill.advice_is_safe() {
                 ""
             } else if skill.is_capped() {
                 "  ← at its cap, needs training to go further"
             } else if skill.is_near_cap() {
                 "  ← close to its cap"
-            } else {
+            } else if skill.has_recipes {
                 "  (recipes captured)"
+            } else {
+                // A profession the game itself names, whose window has not
+                // been scraped. "recipes captured" would be a lie here, and
+                // silence would hide that the cap advice above is live for it.
+                "  (a profession; no recipes captured)"
             };
             println!(
                 "    {:<18} {:<14} {:>9}{}",
@@ -1368,12 +1373,12 @@ fn show_economy(
     }
 
     println!();
-    println!("PROFESSIONS WITH RECIPES");
+    println!("PROFESSIONS");
     if survey.professions.is_empty() {
         println!(
             "  None captured. Open each profession window once in game, then log out — \
-             the client only tells an addon about a trade skill it has been shown, \
-             and without recipes nothing can be crafted or costed."
+             on a client that lists professions the addon sees them anyway, and on one \
+             that does not, the window is the only way it learns a trade skill exists."
         );
     } else {
         for holder in &survey.professions {

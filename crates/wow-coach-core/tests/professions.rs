@@ -8,7 +8,8 @@
 use std::collections::BTreeMap;
 
 use wow_coach_core::collector::{
-    CharacterRecord, Inventory, ItemStack, ProfessionRecipes, Reagent, Recipe,
+    CharacterRecord, Inventory, ItemStack, ProfessionRecipes, ProfessionSlot, Reagent, Recipe,
+    Skill,
 };
 use wow_coach_core::economy;
 use wow_coach_core::professions::{self, Difficulty, Training};
@@ -450,4 +451,251 @@ fn forever_stops_at_artisan_and_is_not_offered_a_master_trainer() {
     );
     assert_eq!(professions::tiers_for(FOREVER).len(), 4);
     assert_eq!(professions::tiers_for(TBC).len(), 5);
+}
+
+//------------------------------------------------------------------------------
+// A profession the client names but whose window has never been opened
+//
+// The gap this closes: Skinning on Burning Crusade has no trade skill window,
+// so the recipe cache never sees it, so a skinner sitting at 75/75 was told
+// nothing at all. `GetProfessions` names it anyway, and the trainer question
+// is pure arithmetic on rank and level — it never needed the window.
+//------------------------------------------------------------------------------
+
+/// A character with one profession the client lists and no recipe cache at all.
+fn gatherer(name: &str, level: u16, profession: &str, rank: u16, max_rank: u16) -> CharacterRecord {
+    CharacterRecord {
+        name: Some(name.to_string()),
+        level: Some(level),
+        realm: Some("Dreamscythe".to_string()),
+        faction: Some("Horde".to_string()),
+        game_flavor: Some("tbc_classic".to_string()),
+        money_copper: Some(0),
+        professions: Some(vec![ProfessionSlot {
+            slot: Some(1),
+            index: Some(6),
+            name: Some(profession.to_string()),
+            rank: Some(rank),
+            max_rank: Some(max_rank),
+            skill_line: Some(393),
+        }]),
+        skills: Some(vec![Skill {
+            name: Some(profession.to_string()),
+            rank: Some(rank),
+            max_rank: Some(max_rank),
+            skill_id: Some(393),
+            header: Some("Professions".to_string()),
+            category_id: None,
+        }]),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn a_profession_with_no_window_still_gets_its_trainer_line() {
+    let plans = plan_for(vec![gatherer("Skinner", 25, "Skinning", 75, 75)]);
+
+    assert_eq!(plans.len(), 1, "the client's own list is enough to plan from");
+    let plan = &plans[0];
+    assert_eq!(plan.profession, "Skinning");
+    assert_eq!(plan.rank, Some(75));
+    match &plan.training {
+        Training::Due { tier } => assert_eq!(tier.name, "Journeyman"),
+        other => panic!("a skinner at 75/75 and level 25 should be told to train: {other:?}"),
+    }
+}
+
+#[test]
+fn no_window_is_reported_as_unknown_rather_than_as_nothing_left_to_make() {
+    // The failure this guards is the one that reads best and misleads worst:
+    // an empty skill-up list rendered as "you are out of useful recipes" when
+    // the truth is that nobody ever looked.
+    let plans = plan_for(vec![gatherer("Skinner", 25, "Skinning", 75, 75)]);
+    let plan = &plans[0];
+
+    assert!(plan.skill_ups.is_empty());
+    assert!(!plan.has_recipe_cache);
+    assert!(
+        !plan.out_of_useful_recipes(),
+        "never looked is not the same as nothing left"
+    );
+    assert!(
+        plan.notes.iter().any(|note| note.contains("never been opened")),
+        "got {:?}",
+        plan.notes
+    );
+    assert!(
+        !plan.notes.iter().any(|note| note.contains("grey")),
+        "the grey note claims every known recipe is trivial, and none are known"
+    );
+}
+
+#[test]
+fn the_profession_list_makes_a_gathering_skill_safe_to_advise_on() {
+    // `advice_is_safe` is what stands between "Skinning 75/75, go and train"
+    // and "Language: Orcish 300/300, go and train". Before the profession list
+    // only a recipe cache could unlock it, and a skinner never had one.
+    let mut record = gatherer("Skinner", 25, "Skinning", 75, 75);
+    record.skills.as_mut().unwrap().push(Skill {
+        name: Some("Orcish".to_string()),
+        rank: Some(300),
+        max_rank: Some(300),
+        skill_id: Some(109),
+        header: Some("Languages".to_string()),
+        category_id: None,
+    });
+
+    let characters: BTreeMap<String, CharacterRecord> =
+        [("Skinner".to_string(), record)].into_iter().collect();
+    let config = RosterConfig::default();
+    let entries = roster::roster(&characters, &config);
+    let survey = economy::survey(&entries, &Default::default());
+
+    let skinning = survey
+        .skills
+        .iter()
+        .find(|entry| entry.skill == "Skinning")
+        .expect("skinning listed");
+    assert!(skinning.is_profession);
+    assert!(!skinning.has_recipes, "no window was ever opened");
+    assert!(
+        skinning.advice_is_safe(),
+        "the client itself calls this a profession"
+    );
+
+    let orcish = survey
+        .skills
+        .iter()
+        .find(|entry| entry.skill == "Orcish")
+        .expect("orcish listed");
+    assert!(!orcish.is_profession);
+    assert!(
+        !orcish.advice_is_safe(),
+        "a language sits at its cap forever and no trainer helps"
+    );
+
+    // And the survey counts it as a profession held, which the recipe cache
+    // alone could never do.
+    assert!(
+        survey
+            .professions
+            .iter()
+            .any(|holder| holder.profession == "Skinning" && holder.needs_training()),
+        "got {:?}",
+        survey.professions
+    );
+}
+
+#[test]
+fn a_profession_in_both_sources_is_one_plan_not_two() {
+    // The merge is on the client's own name for the profession, which both
+    // sources give. Getting this wrong shows a tailor twice, with the second
+    // copy claiming no recipes exist.
+    let mut record = character(
+        "Tailor",
+        20,
+        &[(2589, 100)],
+        "Tailoring",
+        60,
+        75,
+        vec![recipe("Linen Belt", "optimal", &[(2589, 2)])],
+    );
+    record.professions = Some(vec![ProfessionSlot {
+        slot: Some(1),
+        index: Some(6),
+        name: Some("Tailoring".to_string()),
+        rank: Some(60),
+        max_rank: Some(75),
+        skill_line: Some(197),
+    }]);
+
+    let plans = plan_for(vec![record]);
+    assert_eq!(plans.len(), 1, "got {plans:?}");
+    assert!(plans[0].has_recipe_cache);
+    assert_eq!(plans[0].skill_ups.len(), 1);
+}
+
+#[test]
+fn a_client_that_offers_neither_signal_still_says_nothing() {
+    // The behaviour the original rule existed to protect. No profession list,
+    // no recipe cache: a rank is still a fact and "train it" is still a
+    // judgement with nothing behind it.
+    let record = CharacterRecord {
+        name: Some("Quiet".to_string()),
+        level: Some(25),
+        realm: Some("Dreamscythe".to_string()),
+        faction: Some("Horde".to_string()),
+        money_copper: Some(0),
+        skills: Some(vec![Skill {
+            name: Some("Skinning".to_string()),
+            rank: Some(75),
+            max_rank: Some(75),
+            skill_id: None,
+            header: Some("Professions".to_string()),
+            category_id: None,
+        }]),
+        ..Default::default()
+    };
+
+    let characters: BTreeMap<String, CharacterRecord> =
+        [("Quiet".to_string(), record)].into_iter().collect();
+    let config = RosterConfig::default();
+    let entries = roster::roster(&characters, &config);
+    let survey = economy::survey(&entries, &Default::default());
+
+    let skinning = survey
+        .skills
+        .iter()
+        .find(|entry| entry.skill == "Skinning")
+        .expect("listed as a fact");
+    assert!(!skinning.advice_is_safe());
+    assert!(professions::plan(&entries, &[]).is_empty());
+}
+
+#[test]
+fn a_profession_matches_its_skill_by_id_before_name() {
+    // Both numbers come from the same client in the same session, so when both
+    // exist the id is exact. The name fallback is for the Classic clients,
+    // which give skills no id at all.
+    let slot = ProfessionSlot {
+        name: Some("Alchemy".to_string()),
+        skill_line: Some(171),
+        ..Default::default()
+    };
+
+    let renamed_but_same_id = Skill {
+        name: Some("Alchimie".to_string()),
+        skill_id: Some(171),
+        ..Default::default()
+    };
+    assert!(
+        slot.is_same_as(&renamed_but_same_id),
+        "the id settles it, whatever locale the names are in"
+    );
+
+    let same_name_other_id = Skill {
+        name: Some("Alchemy".to_string()),
+        skill_id: Some(182),
+        ..Default::default()
+    };
+    assert!(
+        !slot.is_same_as(&same_name_other_id),
+        "two ids that disagree are two skills, whatever they are called"
+    );
+
+    let no_id_at_all = Skill {
+        name: Some("Alchemy".to_string()),
+        skill_id: None,
+        ..Default::default()
+    };
+    assert!(
+        slot.is_same_as(&no_id_at_all),
+        "the Classic clients give no skill id, and the name is the client's own word for it"
+    );
+
+    let nameless = Skill::default();
+    assert!(
+        !slot.is_same_as(&nameless),
+        "nothing to match on is not a match"
+    );
 }

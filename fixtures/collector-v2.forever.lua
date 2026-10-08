@@ -47,6 +47,40 @@ WoWCoachCollectorDB = {
 				["trainingPointsSpent"] = 40,
 				["trainingPointsTotal"] = 100,
 			},
+			["professions"] = {
+				{
+					["index"] = 6,
+					["maxRank"] = 300,
+					["name"] = "Alchemy",
+					["rank"] = 225,
+					["skillLine"] = 171,
+					["slot"] = 1,
+				},
+				{
+					["index"] = 7,
+					["maxRank"] = 300,
+					["name"] = "Herbalism",
+					["rank"] = 150,
+					["skillLine"] = 182,
+					["slot"] = 2,
+				},
+				{
+					["index"] = 5,
+					["maxRank"] = 150,
+					["name"] = "First Aid",
+					["rank"] = 72,
+					["skillLine"] = 129,
+					["slot"] = 3,
+				},
+				{
+					["index"] = 8,
+					["maxRank"] = 75,
+					["name"] = "Cooking",
+					["rank"] = 40,
+					["skillLine"] = 185,
+					["slot"] = 5,
+				},
+			},
 			["quests"] = {
 				{
 					["header"] = "Durotar",

@@ -129,14 +129,47 @@ collector predates without waiting for an addon release.
 `skillID` is present only where the client supplies a stable identifier, which
 Forever does and the Classic clients do not. Match on `name` when it is absent.
 
-Professions come from the Classic skill-line API, not retail's profession API,
-which does not exist on this client. Headers are excluded. `rank` is the raw
-value: the game also reports temporary points, which the default UI adds for
-display, but those are a transient buff and are not persisted.
+This list is every skill line, which means it also holds languages, weapon
+skills, armour proficiencies and class tabs. It cannot say which of them are
+professions — see `professions` below, which can. Headers are excluded. `rank`
+is the raw value: the game also reports temporary points, which the default UI
+adds for display, but those are a transient buff and are not persisted.
 
 `skillsComplete` is `false` when a collapsed skill header hid lines from
 enumeration. The collector reports the gap rather than expanding the header,
 which would change the player's UI behind their back.
+
+### Professions
+
+```lua
+["professions"] = { { ["slot"] = 1, ["index"] = 6, ["name"] = "Alchemy",
+                      ["rank"] = 225, ["maxRank"] = 300, ["skillLine"] = 171 }, ... },
+```
+
+The game's own list of which skills are professions, from `GetProfessions` and
+`GetProfessionInfo`. This is the one signal that separates a trade skill from a
+language without matching a name in the player's locale, and unlike the recipe
+cache it needs no window opened — which is why a gathering profession with no
+trade skill window is visible here and nowhere else.
+
+**Absent means not captured**, either because the capture predates this field
+or because the client has no `GetProfessions`. **An empty list means the client
+was asked and reported no professions**, which is a usable fact and must not be
+shown the same way.
+
+`slot` is the position the client returned it in, recorded as a fact and given
+no meaning. The documented order is prof1, prof2, archaeology, fishing,
+cooking, first aid; a live Forever capture (build 70235) returned `6, 7, 5,
+nil, 8, nil` with slot 3 resolving to First Aid. Identity comes from `name` and
+`skillLine`, both read per index, so the discrepancy costs nothing.
+
+`index` is what the client wants back when asked about this profession. It is
+documented as unstable across learning and unlearning, so it is stored for
+completeness and is not a key.
+
+The returns are sparse by design. A reader that walks them with `ipairs` stops
+at the first `nil` and silently drops everything after it — the exact bug that
+hid a character's Cooking during the probe that found this API.
 
 ### Talents
 

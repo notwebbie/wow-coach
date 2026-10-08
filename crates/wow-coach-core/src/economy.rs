@@ -58,9 +58,14 @@ pub struct SkillEntry {
     pub skill: String,
     pub rank: Option<u16>,
     pub max_rank: Option<u16>,
-    /// True when a recipe cache backs this one, which is what lets the
-    /// coaching rules treat it as a trade skill rather than a name.
+    /// True when a recipe cache backs this one.
     pub has_recipes: bool,
+    /// True when the client's own profession list names this skill.
+    ///
+    /// The stronger of the two signals, and the one that does not need the
+    /// player to have opened a window. False on a client with no
+    /// `GetProfessions`, where [`Self::has_recipes`] still carries the load.
+    pub is_profession: bool,
 }
 
 impl SkillEntry {
@@ -69,10 +74,19 @@ impl SkillEntry {
     /// A rank is a fact and applies to every skill. "At its cap, train it" is
     /// a judgement and applies only to a trade skill — a language sits at
     /// 300/300 forever and a class tab at 1/1, and no trainer helps with
-    /// either. The recipe cache is the only locale-independent evidence that
-    /// a skill is a trade skill, so without it this stays quiet.
+    /// either.
+    ///
+    /// Two independent pieces of evidence, and either will do. The recipe
+    /// cache proves it by construction: those entries come out of a trade
+    /// skill window, so anything in one is a trade skill. It also
+    /// under-reports, because a skill with no window — Skinning, or Herbalism
+    /// off Forever — never appears, so a player sitting at their Skinning cap
+    /// got silence. `GetProfessions` closes that gap: it is the game's own
+    /// list of which skills are professions, it needs no window opened, and it
+    /// is as locale-independent as the recipe cache. A client offering neither
+    /// still stays quiet, which is the behaviour this rule exists to protect.
     pub fn advice_is_safe(&self) -> bool {
-        self.has_recipes
+        self.has_recipes || self.is_profession
     }
 
     pub fn is_capped(&self) -> bool {
@@ -269,24 +283,60 @@ pub fn survey(entries: &[RosterEntry<'_>], prices: &PriceDb) -> Economy {
             .gold_copper
             .saturating_add(record.money_copper.unwrap_or(0));
 
-        // Professions come from the recipe cache, not from the skill list.
-        // The client's skill list also holds talent tabs, weapon skills,
-        // armour proficiencies and languages, none of which are professions
-        // and all of which sit permanently at cap. The recipe cache only ever
-        // holds skills read out of a trade skill window, which makes it a
-        // trade skill by construction — and locale-independent, which a list
-        // of profession names would not be.
-        for (profession, cache) in record.recipes.iter().flatten() {
-            economy.professions.push(ProfessionHolder {
-                key: entry.key.to_string(),
-                name: name.clone(),
-                role: entry.role,
-                profession: profession.clone(),
-                rank: cache.rank,
-                max_rank: cache.max_rank,
-                recipes_known: cache.recipes.as_ref().map(Vec::len),
-            });
+        // Professions come from the client's profession list and the recipe
+        // cache, never from the skill list — which also holds talent tabs,
+        // weapon skills, armour proficiencies and languages, none of them
+        // professions and all of them permanently at cap.
+        //
+        // The two sources answer different halves. `GetProfessions` says which
+        // skills are professions, for every profession, with no window opened;
+        // the recipe cache says what can be made, for the ones whose window
+        // has been. Merging them by the client's own name for each profession
+        // is safe because both names come from the same client in the same
+        // session. A client with no `GetProfessions` falls back to the recipe
+        // cache alone, which is where this started.
+        let mut holders: BTreeMap<String, ProfessionHolder> = BTreeMap::new();
+        for slot in record.professions.iter().flatten() {
+            let Some(profession) = slot.name.clone() else {
+                continue;
+            };
+            holders.insert(
+                profession.clone(),
+                ProfessionHolder {
+                    key: entry.key.to_string(),
+                    name: name.clone(),
+                    role: entry.role,
+                    profession,
+                    rank: slot.rank,
+                    max_rank: slot.max_rank,
+                    recipes_known: None,
+                },
+            );
         }
+        for (profession, cache) in record.recipes.iter().flatten() {
+            let holder = holders
+                .entry(profession.clone())
+                .or_insert_with(|| ProfessionHolder {
+                    key: entry.key.to_string(),
+                    name: name.clone(),
+                    role: entry.role,
+                    profession: profession.clone(),
+                    rank: None,
+                    max_rank: None,
+                    recipes_known: None,
+                });
+            // The window is the fresher reading of the two when it exists: it
+            // is scraped with the profession open, where the profession list
+            // is read at login.
+            if cache.rank.is_some() {
+                holder.rank = cache.rank;
+            }
+            if cache.max_rank.is_some() {
+                holder.max_rank = cache.max_rank;
+            }
+            holder.recipes_known = cache.recipes.as_ref().map(Vec::len);
+        }
+        economy.professions.extend(holders.into_values());
 
         for skill in record.skills.iter().flatten() {
             let Some(skill_name) = skill.name.clone() else {
@@ -296,6 +346,11 @@ pub fn survey(entries: &[RosterEntry<'_>], prices: &PriceDb) -> Economy {
                 .recipes
                 .as_ref()
                 .is_some_and(|recipes| recipes.contains_key(&skill_name));
+            let is_profession = record
+                .professions
+                .iter()
+                .flatten()
+                .any(|slot| slot.is_same_as(skill));
             economy.skills.push(SkillEntry {
                 character: name.clone(),
                 role: entry.role,
@@ -304,6 +359,7 @@ pub fn survey(entries: &[RosterEntry<'_>], prices: &PriceDb) -> Economy {
                 rank: skill.rank,
                 max_rank: skill.max_rank,
                 has_recipes,
+                is_profession,
             });
         }
 

@@ -154,6 +154,13 @@ pub struct CharacterRecord {
     pub skills: Option<Vec<Skill>>,
     /// False when a collapsed header hid lines from enumeration.
     pub skills_complete: Option<bool>,
+    /// The skills the game itself files as professions.
+    ///
+    /// Absent means the client has no `GetProfessions`, or the capture
+    /// predates this field. An empty list means the client was asked and said
+    /// the character has none, which is a different fact and a usable one.
+    #[serde(deserialize_with = "empty_table_as_list")]
+    pub professions: Option<Vec<ProfessionSlot>>,
     pub talents: Option<Talents>,
     #[serde(deserialize_with = "empty_table_as_list")]
     pub quests: Option<Vec<Quest>>,
@@ -166,6 +173,56 @@ pub struct CharacterRecord {
     pub ruleset: Option<Ruleset>,
     pub pet: Option<Pet>,
     pub recipes: Option<BTreeMap<String, ProfessionRecipes>>,
+}
+
+/// One profession, as the game's own profession list reports it.
+///
+/// This is the answer to a question the skill list cannot settle: whether a
+/// skill is a trade skill or a language. The skill window mixes professions,
+/// languages, weapon proficiencies and armour types together, and the only way
+/// to tell them apart there is to read a name in the player's own locale.
+/// `GetProfessions` returns professions and nothing else, which makes this the
+/// signal the coaching rules can act on.
+///
+/// `slot` is the position the client returned it in and carries no meaning
+/// here. The documented order is prof1, prof2, archaeology, fishing, cooking,
+/// first aid; a live Forever capture put First Aid in slot 3. Whichever is
+/// right, nothing reads the position — identity comes from `skill_line` and
+/// `name`, which the client supplies per index.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ProfessionSlot {
+    /// Position in the client's own return list. A fact, not a meaning.
+    pub slot: Option<u8>,
+    /// The index the client wants back when asked about this profession.
+    /// Documented as unstable across learning and unlearning, so it is stored
+    /// for completeness and never used as a key.
+    pub index: Option<u8>,
+    pub name: Option<String>,
+    pub rank: Option<u16>,
+    pub max_rank: Option<u16>,
+    /// The locale-independent identity, where the client gives one.
+    pub skill_line: Option<u32>,
+}
+
+impl ProfessionSlot {
+    /// Whether this slot describes the same profession as a captured skill
+    /// line.
+    ///
+    /// Id first: both numbers come from the same client in the same session,
+    /// so when both are present the match is exact and locale-free. Name is
+    /// the fallback for the Classic clients, which give skills no id — and it
+    /// is safe in a way a hard-coded name list would not be, because both
+    /// sides are the client's own words for the same thing.
+    pub fn is_same_as(&self, skill: &Skill) -> bool {
+        match (self.skill_line, skill.skill_id) {
+            (Some(mine), Some(theirs)) if mine > 0 && theirs > 0 => mine == theirs,
+            _ => match (self.name.as_deref(), skill.name.as_deref()) {
+                (Some(mine), Some(theirs)) => mine == theirs,
+                _ => false,
+            },
+        }
+    }
 }
 
 /// One spell the character knows.
