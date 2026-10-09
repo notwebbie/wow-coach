@@ -20,10 +20,10 @@ fn character(flavor: &str, max_xp: u64, rested_xp: u64) -> CharacterRecord {
 
 #[test]
 fn measuring_the_rate_does_not_unlock_the_cap() {
-    // The headline. Forever's fill rate was measured over 26 hours in an inn,
-    // but nothing observed bears on where the bar stops — the longest run
-    // reached a tenth of Classic's cap. The ranking needs the cap, so it must
-    // still refuse to rank on rest.
+    // The headline. Forever's fill rate is measured and settled, and nothing
+    // observed says where the bar stops — the parked run sailed through
+    // Classic's cap without slowing. Knowing a cap is *not* 1.5 levels is not
+    // knowing what it is, so the ranking must still refuse to rank on rest.
     let model = rested::model_for(Some("forever"));
 
     assert!(model.rate_per_8h.is_some(), "the rate is known");
@@ -32,6 +32,22 @@ fn measuring_the_rate_does_not_unlock_the_cap() {
 
     assert!(model.cap_levels.is_none(), "the cap is not");
     assert!(!model.cap_basis.is_known());
+
+    // Specifically not Classic's. A later edit that reaches for the familiar
+    // number would be contradicted by a reading of 790 on a 400 XP level, and
+    // this is where that edit should fail.
+    assert_ne!(
+        model.cap_levels,
+        Some(1.5),
+        "the parked character passed 1.5 levels and kept filling"
+    );
+    match model.cap_basis {
+        Basis::Unknown { why } => assert!(
+            why.contains("1.5 levels"),
+            "an unknown that has been narrowed should say what it has ruled out: {why}"
+        ),
+        other => panic!("expected an unknown cap, got {other:?}"),
+    }
 
     let record = character("forever", 400, 62);
     assert!(
@@ -49,9 +65,9 @@ fn a_measured_rate_says_how_many_samples_it_rests_on() {
     let model = rested::model_for(Some("forever"));
     match model.rate_basis {
         Basis::Measured { samples, note } => {
-            assert!(samples >= 4, "the 152 hour run added two more readings");
+            assert!(samples >= 4, "the parked run added two more readings");
             assert!(
-                note.contains("152 hours"),
+                note.contains("315 hours"),
                 "the length of the run is what makes the number trustworthy"
             );
             assert!(

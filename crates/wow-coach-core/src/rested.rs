@@ -144,28 +144,33 @@ fn classic() -> RestedModel {
     }
 }
 
-/// WoW Forever: the rate is measured and matches Classic's; the cap is not.
+/// WoW Forever: the rate is measured and matches Classic's; the cap does not.
 ///
 /// Kept as its own function rather than delegating to [`classic`], even though
 /// the rate is now the same number. The two are equal by measurement, not by
-/// definition, and the cap is still unknown here — folding them together would
-/// quietly grant Forever a cap nobody has observed.
+/// definition — and the cap is now known to *differ*, which is exactly what
+/// folding them together would have hidden.
 fn forever() -> RestedModel {
     RestedModel {
         rate_per_8h: Some(0.05),
         rate_basis: Basis::Measured {
             samples: 4,
-            note: "one level 1 character parked 152 hours in an inn with no Legacy points; \
-                   376 exhaustion against 380 predicted by Classic's 5% and 365 by a flat \
-                   4.8%, which this run rules out. The implied rate climbs 4.09% -> 4.77% \
-                   -> 4.94% toward 5% without passing it, the signature of about 1.7 hours \
-                   of accrual lost at the start rather than of a slower rate",
+            note: "one level 1 character parked 315 hours in an inn with no Legacy points, \
+                   read four times. A flat 4.8% is ruled out: each successive segment reads \
+                   closer to 5% per 8 hours without passing it — 4.86%, then 4.98%, then \
+                   5.00% across the last 166 hours — which is the signature of about 1.7 \
+                   hours of accrual lost at the start rather than of a slower rate. That \
+                   last segment is long enough that the startup loss no longer measurably \
+                   dilutes it",
         },
         cap_levels: None,
         cap_basis: Basis::Unknown {
-            why: "the rested cap has never been observed on this client — the longest run \
-                  reached 376 of Classic's 600, with no sign of flattening — and the Legacy \
-                  \"Well Rested\" perk is expected to change it",
+            why: "higher than Classic's 1.5 levels, and still not observed. The parked \
+                  character passed 600 — Classic's cap for a 400 XP level — around 6 October \
+                  and went on filling at the same 5%, reading 790 on 9 October, which is 1.98 \
+                  levels, with the accrual still linear to three figures. So the cap is not \
+                  1.5 levels here. What it is remains unmeasured, and the Legacy \
+                  \"Well Rested\" perk is expected to change it again",
         },
     }
 }
