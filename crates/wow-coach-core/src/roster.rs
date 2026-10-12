@@ -118,11 +118,27 @@ pub struct RosterConfig {
     /// its own rules rather than by a list — which is what the prototype
     /// silently fell back to while still claiming a configured rotation.
     pub rotation: Vec<String>,
+    /// The talent tree each character is being built in, as the game names
+    /// it. Player-stated: points spent can suggest a spec, but a character
+    /// mid-respec or with one stray point would be guessed wrong.
+    pub specs: BTreeMap<String, String>,
 }
 
 impl RosterConfig {
     pub fn role_for(&self, key: &str) -> Role {
         self.roles.get(key).copied().unwrap_or_default()
+    }
+
+    pub fn spec_for(&self, key: &str) -> Option<&str> {
+        self.specs.get(key).map(String::as_str)
+    }
+
+    pub fn set_spec(&mut self, key: impl Into<String>, tree: impl Into<String>) {
+        self.specs.insert(key.into(), tree.into());
+    }
+
+    pub fn clear_spec(&mut self, key: &str) -> bool {
+        self.specs.remove(key).is_some()
     }
 
     pub fn set_role(&mut self, key: impl Into<String>, role: Role) {

@@ -11,6 +11,7 @@ pub mod professions;
 pub mod quests;
 pub mod rested;
 pub mod roster;
+pub mod talents;
 pub mod travel;
 
 use std::collections::BTreeMap;

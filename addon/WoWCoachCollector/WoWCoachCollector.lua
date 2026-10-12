@@ -408,6 +408,160 @@ end
 -- index returns nothing, which cost a beta run to discover.
 --------------------------------------------------------------------------------
 
+-- Per-talent detail. Each talent is stored as the game lays it out: a name,
+-- its tier (row) and column within its tree, the rank bought and the most it
+-- can take, and the talent it hangs off when there is an arrow into it. The
+-- planner needs all four, and nothing here is a recommendation.
+
+local function spellName(spellID)
+    if not spellID then return nil end
+    if has("C_Spell.GetSpellName") then
+        local name = C_Spell.GetSpellName(spellID)
+        if name then return name end
+    end
+    if GetSpellInfo then
+        local first = GetSpellInfo(spellID)
+        if type(first) == "table" then return first.name end
+        return first
+    end
+    return nil
+end
+
+-- Rank and column numbers from pixel positions. Forever exposes the vanilla
+-- grid only as node coordinates; ranking the distinct values recovers the
+-- row and column the talent frame draws, 1-based like GetTalentInfo's.
+local function ordinals(values)
+    local distinct, seen = {}, {}
+    for _, value in ipairs(values) do
+        if not seen[value] then
+            seen[value] = true
+            distinct[#distinct + 1] = value
+        end
+    end
+    table.sort(distinct)
+    local index = {}
+    for position, value in ipairs(distinct) do index[value] = position end
+    return index
+end
+
+local function traitNodeTalents(configID, treeID, groups)
+    if not has("C_Traits.GetTreeNodes") or not has("C_Traits.GetNodeInfo") then return nil end
+    local nodeIDs = C_Traits.GetTreeNodes(treeID)
+    if not nodeIDs or #nodeIDs == 0 then return nil end
+
+    local wanted = {}
+    for _, groupID in ipairs(groups) do wanted[groupID] = true end
+
+    local byGroup, nodes, edges = {}, {}, {}
+    for _, nodeID in ipairs(nodeIDs) do
+        local info = C_Traits.GetNodeInfo(configID, nodeID)
+        local group
+        if info and info.ID and info.ID ~= 0 and info.groupIDs then
+            for _, groupID in ipairs(info.groupIDs) do
+                if wanted[groupID] then group = groupID break end
+            end
+        end
+        if group then
+            local entryID = (info.activeEntry and info.activeEntry.entryID)
+                or (info.entryIDs and info.entryIDs[1])
+            local spellID, name
+            if entryID and has("C_Traits.GetEntryInfo") and has("C_Traits.GetDefinitionInfo") then
+                local entry = C_Traits.GetEntryInfo(configID, entryID)
+                local definition = entry and entry.definitionID
+                    and C_Traits.GetDefinitionInfo(entry.definitionID)
+                if definition then
+                    spellID = definition.spellID
+                    name = definition.overrideName
+                    if name == "" then name = nil end
+                end
+            end
+            name = name or spellName(spellID)
+            if name then
+                local talent = {
+                    name = name,
+                    spellID = spellID,
+                    -- Committed ranks only: currentRank also counts points
+                    -- placed in the frame but not yet applied.
+                    rank = info.ranksPurchased or info.activeRank or info.currentRank or 0,
+                    maxRank = info.maxRanks,
+                }
+                nodes[nodeID] = { talent = talent, group = group, x = info.posX, y = info.posY }
+                byGroup[group] = byGroup[group] or {}
+                table.insert(byGroup[group], nodeID)
+                for _, edge in ipairs(info.visibleEdges or {}) do
+                    if edge.targetNode then edges[#edges + 1] = { from = nodeID, to = edge.targetNode } end
+                end
+            end
+        end
+    end
+
+    local result = {}
+    for _, groupID in ipairs(groups) do
+        local ids = byGroup[groupID] or {}
+        local xs, ys = {}, {}
+        for _, nodeID in ipairs(ids) do
+            local node = nodes[nodeID]
+            if node.x and node.y then
+                xs[#xs + 1] = node.x
+                ys[#ys + 1] = node.y
+            end
+        end
+        local column, tier = ordinals(xs), ordinals(ys)
+        for _, nodeID in ipairs(ids) do
+            local node = nodes[nodeID]
+            if node.x and node.y then
+                node.talent.tier = tier[node.y]
+                node.talent.column = column[node.x]
+            end
+        end
+    end
+    for _, edge in ipairs(edges) do
+        local from, to = nodes[edge.from], nodes[edge.to]
+        if from and to and from.group == to.group and from.talent.tier and from.talent.column then
+            to.talent.requires = { tier = from.talent.tier, column = from.talent.column }
+        end
+    end
+
+    for _, groupID in ipairs(groups) do
+        local list = {}
+        for _, nodeID in ipairs(byGroup[groupID] or {}) do list[#list + 1] = nodes[nodeID].talent end
+        table.sort(list, function(a, b)
+            if (a.tier or 0) ~= (b.tier or 0) then return (a.tier or 0) < (b.tier or 0) end
+            if (a.column or 0) ~= (b.column or 0) then return (a.column or 0) < (b.column or 0) end
+            return a.name < b.name
+        end)
+        result[groupID] = list
+    end
+    return result
+end
+
+local function tabTalents(tab)
+    if not GetNumTalents or not GetTalentInfo then return nil end
+    local count = GetNumTalents(tab, false, false)
+    if not count or count == 0 then return nil end
+    local list = {}
+    for index = 1, count do
+        local name, _, tier, column, rank, maxRank = GetTalentInfo(tab, index, false, false)
+        if type(name) == "table" then
+            local info = name
+            name, tier, column = info.name, info.tier, info.column
+            rank, maxRank = info.rank, info.maxRank
+        end
+        if name and tier and column then
+            local talent = { name = name, tier = tier, column = column, rank = rank or 0, maxRank = maxRank }
+            if GetTalentPrereqs then
+                local requiredTier, requiredColumn = GetTalentPrereqs(tab, index, false, false)
+                if requiredTier and requiredColumn then
+                    talent.requires = { tier = requiredTier, column = requiredColumn }
+                end
+            end
+            list[#list + 1] = talent
+        end
+    end
+    if #list == 0 then return nil end
+    return list
+end
+
 local function captureTalentsFromTraits()
     if not has("C_SpecializationInfo.GetCombatConfigIDForSpecGroup") then return nil end
     if not has("C_Traits.GetGroupDisplayInfoByTreeID") or not has("C_Traits.GetGroupCurrencyInfo") then
@@ -434,11 +588,19 @@ local function captureTalentsFromTraits()
     local currencies = C_Traits.GetGroupCurrencyInfo(configID, groupIDs)
     if not currencies then return nil end
 
+    -- Per-talent detail is the newest and least proven part of this path, so
+    -- a failure there costs the detail and never the totals.
+    local ok, detail = pcall(traitNodeTalents, configID, treeID, groupIDs)
+    if not ok then detail = nil end
+
     local trees = {}
     for index, group in ipairs(currencies) do
         local first = group.currencyInfos and group.currencyInfos[1]
         if names[index] then
-            trees[#trees + 1] = { name = names[index], pointsSpent = (first and first.spent) or 0 }
+            local tree = { name = names[index], pointsSpent = (first and first.spent) or 0 }
+            local talents = detail and detail[groupIDs[index]]
+            if talents and #talents > 0 then tree.talents = talents end
+            trees[#trees + 1] = tree
         end
     end
     if #trees == 0 then return nil end
@@ -469,7 +631,12 @@ local function captureTalentsFromTabs()
             local _, tabName, _, _, spent = GetTalentTabInfo(index, false, false)
             name, pointsSpent = tabName, spent
         end
-        if name then trees[#trees + 1] = { name = name, pointsSpent = pointsSpent or 0 } end
+        if name then
+            local tree = { name = name, pointsSpent = pointsSpent or 0 }
+            local ok, talents = pcall(tabTalents, index)
+            if ok and talents then tree.talents = talents end
+            trees[#trees + 1] = tree
+        end
     end
     if #trees == 0 then return nil end
 

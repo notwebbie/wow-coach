@@ -1,0 +1,168 @@
+{
+  "id": "tbc-warlock-affliction",
+  "flavor": "tbc_classic",
+  "class": "WARLOCK",
+  "spec": "Affliction",
+  "summary": "Affliction levelling into Siphon Life, Shadow Mastery, Contagion and Unstable Affliction, then Demonology survivability (45/16/0 at 70).",
+  "sources": [
+    "https://www.icy-veins.com/tbc-classic/affliction-warlock-leveling-guide",
+    "https://www.wowhead.com/tbc/guide/classes/warlock/affliction/leveling-tips"
+  ],
+  "notes": [
+    "Icy Veins lists talents per 10-level bracket; the order within each bracket is arranged to satisfy tier gates.",
+    "Levels 55-70 spend the Demonology talents Icy Veins names for 50-59.",
+    "Fel Intellect and Improved Healthstone come before Demonic Aegis so the third Demonology tier is open."
+  ],
+  "steps": [
+    {
+      "tree": "Affliction",
+      "talent": "Improved Corruption",
+      "rank": 5,
+      "tier": 1
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Suppression",
+      "rank": 2,
+      "tier": 1
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Improved Life Tap",
+      "rank": 2,
+      "tier": 2
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Suppression",
+      "rank": 3,
+      "tier": 1
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Improved Drain Soul",
+      "rank": 2,
+      "tier": 2
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Soul Siphon",
+      "rank": 2,
+      "tier": 2
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Amplify Curse",
+      "rank": 1,
+      "tier": 3
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Fel Concentration",
+      "rank": 5,
+      "tier": 3
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Improved Curse of Agony",
+      "rank": 2,
+      "tier": 3
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Empowered Corruption",
+      "rank": 3,
+      "tier": 4
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Nightfall",
+      "rank": 2,
+      "tier": 4
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Grim Reach",
+      "rank": 2,
+      "tier": 4
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Siphon Life",
+      "rank": 1,
+      "tier": 5
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Shadow Mastery",
+      "rank": 5,
+      "tier": 6
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Contagion",
+      "rank": 5,
+      "tier": 7
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Unstable Affliction",
+      "rank": 1,
+      "tier": 9
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Dark Pact",
+      "rank": 1,
+      "tier": 7
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Shadow Embrace",
+      "rank": 1,
+      "tier": 5
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Improved Howl of Terror",
+      "rank": 2,
+      "tier": 8
+    },
+    {
+      "tree": "Demonology",
+      "talent": "Demonic Embrace",
+      "rank": 5,
+      "tier": 1
+    },
+    {
+      "tree": "Demonology",
+      "talent": "Fel Intellect",
+      "rank": 3,
+      "tier": 2
+    },
+    {
+      "tree": "Demonology",
+      "talent": "Improved Healthstone",
+      "rank": 2,
+      "tier": 1
+    },
+    {
+      "tree": "Demonology",
+      "talent": "Demonic Aegis",
+      "rank": 3,
+      "tier": 3
+    },
+    {
+      "tree": "Demonology",
+      "talent": "Fel Domination",
+      "rank": 1,
+      "tier": 3
+    },
+    {
+      "tree": "Demonology",
+      "talent": "Fel Stamina",
+      "rank": 2,
+      "tier": 3
+    }
+  ]
+}

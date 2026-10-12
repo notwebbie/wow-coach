@@ -127,6 +127,29 @@ end
 function GetNumTalentTabs() return 3 end
 function GetUnspentTalentPoints() return 2 end
 
+-- Per-talent detail: only the Frost tab is populated, so the other two show
+-- that an empty tab stores no list rather than an empty one. Returns are
+-- name, icon, tier, column, rank, maxRank — the Classic order.
+local frost_talents = {
+    { "Frost Warding", "icon", 1, 1, 0, 2 },
+    { "Improved Frostbolt", "icon", 1, 2, 5, 5 },
+    { "Elemental Precision", "icon", 1, 3, 0, 3 },
+    { "Ice Shards", "icon", 2, 1, 0, 5 },
+    { "Permafrost", "icon", 2, 4, 0, 3, requires = { 1, 2 } },
+}
+function GetNumTalents(tab) return tab == 3 and #frost_talents or 0 end
+function GetTalentInfo(tab, index)
+    if tab ~= 3 then return nil end
+    local t = frost_talents[index]
+    if not t then return nil end
+    return t[1], t[2], t[3], t[4], t[5], t[6], false, true
+end
+function GetTalentPrereqs(tab, index)
+    local t = tab == 3 and frost_talents[index]
+    if t and t.requires then return t.requires[1], t.requires[2], true end
+    return nil
+end
+
 -- Quest log: header, two quests. questID is return 8, isComplete is a NUMBER.
 function GetNumQuestLogEntries() return 3, 2 end
 function GetQuestLogTitle(index)
@@ -364,6 +387,24 @@ for _, tree in ipairs(snap.talents and snap.talents.trees or {}) do
 end
 check(fire and fire.pointsSpent == 31, "pointsSpent must come from return 7")
 check(snap.talents and snap.talents.unspentPoints == 2, "unspent points should be captured")
+local frost_tree
+for _, tree in ipairs(snap.talents and snap.talents.trees or {}) do
+    if tree.name == "Frost" then frost_tree = tree end
+    if tree.name == "Arcane" then
+        check(tree.talents == nil, "a tab with no talents stores no list")
+    end
+end
+check(frost_tree and frost_tree.talents and #frost_tree.talents == 5, "every talent in the tab captured")
+local frostbolt = frost_tree and frost_tree.talents and frost_tree.talents[2]
+check(frostbolt and frostbolt.name == "Improved Frostbolt", "talent name captured")
+check(frostbolt and frostbolt.tier == 1 and frostbolt.column == 2, "tier and column captured")
+check(frostbolt and frostbolt.rank == 5 and frostbolt.maxRank == 5, "rank and maxRank captured")
+local warding = frost_tree and frost_tree.talents and frost_tree.talents[1]
+check(warding and warding.rank == 0, "an unlearned talent is stored with rank 0, not dropped")
+local permafrost = frost_tree and frost_tree.talents and frost_tree.talents[5]
+check(permafrost and permafrost.requires and permafrost.requires.tier == 1
+    and permafrost.requires.column == 2, "prerequisite arrow captured as tier and column")
+check(warding and warding.requires == nil, "no prerequisite is stored as absent")
 
 -- Quests
 check(snap.quests and #snap.quests == 2, "headers should be excluded from quests")

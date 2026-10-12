@@ -23,6 +23,7 @@ use wow_coach_core::history::{self, History, Snapshot, XpGain};
 use wow_coach_core::professions;
 use wow_coach_core::quests;
 use wow_coach_core::roster::{self, Role, RosterConfig};
+use wow_coach_core::talents::{self, Blocked, PlanError, SpecChoice};
 use wow_coach_core::travel;
 
 const COLLECTOR_FILE: &str = "WoWCoachCollector.lua";
@@ -59,6 +60,8 @@ USAGE:
     wow-coach quests [<character>] [--all] [--file <path>] [--config <path>]
     wow-coach professions [<character>] [--prices <path>] [--file <path>] [--config <path>]
     wow-coach travel [<destination>] [--file <path>] [--config <path>]
+    wow-coach talents [<character>] [--file <path>] [--config <path>]
+    wow-coach set-spec <character> <tree|unset> [--file <path>] [--config <path>]
     wow-coach where
 
 `next` ranks your rotation by what is being lost: a character at the rested cap
@@ -84,6 +87,13 @@ recipe and the reagents routinely live on different alts.
 `quests` treats the log as a route rather than a list: what is ready to hand
 in, which zone clears the most in one visit, and — only when the log is
 actually full — what to let go of.
+
+`talents` says where the next talent points go, by walking a published build
+against the character's real tree — tier gates and prerequisite arrows
+included. The tree comes from the game, so every class works; the build is the
+part that has to be written per spec, and the tool says when there is none.
+The spec is the one you set with `set-spec`, or the tree holding the most
+points.
 
 `doctor` checks which supporting addons are installed.
 
@@ -174,6 +184,18 @@ fn run(args: &[String]) -> Result<(), String> {
                 .ok_or("which role? active, bank or parked")?;
             set_role(&config_path, file.as_deref(), name, role)
         }
+        "set-spec" => {
+            let name = positional
+                .first()
+                .ok_or("which character? try: wow-coach set-spec <name> Affliction")?;
+            if positional.len() < 2 {
+                return Err("which talent tree? e.g. Affliction, Frost, Beast Mastery".into());
+            }
+            // Tree names can be two words ("Beast Mastery"), so take the rest.
+            let tree = positional[1..].join(" ");
+            set_spec(&config_path, file.as_deref(), name, &tree)
+        }
+        "talents" => show_talents(positional.first().copied(), file.as_deref(), &config_path),
         "doctor" => {
             doctor();
             Ok(())
@@ -2082,5 +2104,219 @@ fn quest_standing(quest: &quests::QuestRef) -> String {
         quests::Standing::Trivial { by } => format!("{level}, {by} below you"),
         quests::Standing::Ready => level,
         quests::Standing::Unknown => "no level recorded".to_string(),
+    }
+}
+
+fn set_spec(config_path: &Path, file: Option<&Path>, name: &str, tree: &str) -> Result<(), String> {
+    let (characters, _, _) = gather(file)?;
+    let key = RosterConfig::resolve(&characters, name)
+        .ok_or_else(|| format!("no character called {name} in your saved data"))?
+        .to_string();
+    let mut config = load_config(config_path);
+
+    if matches!(
+        tree.to_ascii_lowercase().as_str(),
+        "unset" | "none" | "clear"
+    ) {
+        if config.clear_spec(&key) {
+            save_config(config_path, &config)?;
+            println!("{name} has no stated spec; the tree with the most points will be used.");
+        } else {
+            println!("{name} had no spec set.");
+        }
+        return Ok(());
+    }
+
+    // Use the game's own spelling when the tree is known, and refuse a tree
+    // this character does not have rather than store a typo.
+    let record = &characters[&key];
+    let known: Vec<&str> = record
+        .talents
+        .as_ref()
+        .and_then(|t| t.trees.as_ref())
+        .map(|trees| trees.iter().filter_map(|t| t.name.as_deref()).collect())
+        .unwrap_or_default();
+    let stored = if known.is_empty() {
+        tree.to_string()
+    } else {
+        known
+            .iter()
+            .find(|candidate| candidate.eq_ignore_ascii_case(tree))
+            .map(|candidate| (*candidate).to_string())
+            .ok_or_else(|| format!("{name} has no {tree} tree; it has {}", known.join(", ")))?
+    };
+
+    config.set_spec(key, stored.clone());
+    save_config(config_path, &config)?;
+    println!("{name} is being built as {stored}.");
+    Ok(())
+}
+
+fn show_talents(who: Option<&str>, file: Option<&Path>, config_path: &Path) -> Result<(), String> {
+    let (characters, notices, _) = gather(file)?;
+    for notice in &notices {
+        eprintln!("note: {notice}");
+    }
+    let config = load_config(config_path);
+    let entries = roster::roster(&characters, &config);
+    let chosen: Vec<&roster::RosterEntry<'_>> = match who {
+        Some(name) => entries
+            .iter()
+            .filter(|entry| entry.name().eq_ignore_ascii_case(name))
+            .collect(),
+        None => entries
+            .iter()
+            .filter(|entry| entry.role.in_play_rotation())
+            .collect(),
+    };
+    if chosen.is_empty() {
+        return Err(match who {
+            Some(name) => format!("no captured character called {name}"),
+            None => "no character is in the play rotation; name one: wow-coach talents <character>"
+                .to_string(),
+        });
+    }
+
+    let builds = talents::builtin_builds();
+    for (index, entry) in chosen.iter().enumerate() {
+        if index > 0 {
+            println!();
+        }
+        print_talent_plan(entry, &builds, config.spec_for(entry.key));
+    }
+    Ok(())
+}
+
+fn print_talent_plan(
+    entry: &roster::RosterEntry<'_>,
+    builds: &[talents::TalentBuild],
+    stated: Option<&str>,
+) {
+    let record = entry.record;
+    let level = record.level.map(|l| l.to_string()).unwrap_or_else(dash);
+    let class = record.class.as_deref().unwrap_or("?");
+    println!("{} — level {level} {class}", entry.name());
+
+    let spec = talents::choose_spec(record, stated);
+    let tree = match &spec {
+        SpecChoice::Stated(tree) => {
+            println!("  Spec: {tree}");
+            tree.clone()
+        }
+        SpecChoice::Inferred(tree) => {
+            println!(
+                "  Spec: {tree} (most points; set it with wow-coach set-spec {} {tree})",
+                entry.name()
+            );
+            tree.clone()
+        }
+        SpecChoice::Unknown => {
+            println!(
+                "  No spec yet. Choose one: wow-coach set-spec {} <tree>",
+                entry.name()
+            );
+            return;
+        }
+    };
+
+    let Some(build) = talents::find_build(builds, record, &tree) else {
+        let flavor = record.game_flavor.as_deref().unwrap_or("this client");
+        println!("  No {tree} {class} build is written for {flavor} yet.");
+        if let Some(unspent) = record.talents.as_ref().and_then(|t| t.unspent_points) {
+            if unspent > 0 {
+                println!("  {unspent} unspent point(s).");
+            }
+        }
+        return;
+    };
+
+    match talents::plan(record, build, 5) {
+        Err(PlanError::NoTalents) => {
+            println!("  No talent capture yet — log in once with the addon.")
+        }
+        Err(PlanError::NoTalentDetail) => println!(
+            "  Only tree totals are captured. Update the addon and log in once to see each talent."
+        ),
+        Ok(plan) => {
+            println!("  Build: {}", build.summary);
+            if plan.unspent == 0 {
+                println!("  No unspent points.");
+            } else {
+                println!("  Spend {} point(s) now:", plan.unspent);
+                for step in &plan.now {
+                    print_points(step);
+                }
+                if plan.now.iter().map(|s| u16::from(s.points())).sum::<u16>() < plan.unspent
+                    && plan.blocked.is_none()
+                    && plan.finished
+                {
+                    println!("    (the build is complete; the rest are yours to place)");
+                }
+            }
+            if !plan.upcoming.is_empty() {
+                println!("  Then, as you level:");
+                for step in &plan.upcoming {
+                    print_points(step);
+                }
+            }
+            if let Some(blocked) = &plan.blocked {
+                println!("  Stopped: {}", describe_blocked(blocked));
+            }
+            if plan.finished && plan.now.is_empty() && plan.upcoming.is_empty() {
+                println!("  Every step of this build is done.");
+            }
+            for off in &plan.off_plan {
+                if off.build_rank == 0 {
+                    println!(
+                        "  Off-plan: {} has {} point(s); the build does not take it",
+                        off.talent, off.rank
+                    );
+                } else {
+                    println!(
+                        "  Off-plan: {} has {} points; the build stops at {}",
+                        off.talent, off.rank, off.build_rank
+                    );
+                }
+            }
+            for note in &build.notes {
+                println!("  Note: {note}");
+            }
+            if let Some(source) = build.sources.first() {
+                println!("  Source: {source}");
+            }
+        }
+    }
+}
+
+fn print_points(step: &talents::PlannedPoints) {
+    let column = match step.column {
+        0 => String::new(),
+        c => format!(", column {c}"),
+    };
+    println!(
+        "    {} → {}/{}  ({}, row {}{column})",
+        step.talent, step.to_rank, step.max_rank, step.tree, step.tier
+    );
+}
+
+fn describe_blocked(blocked: &Blocked) -> String {
+    match blocked {
+        Blocked::UnknownTalent { tree, talent } => format!(
+            "the build names {talent} in {tree}, which this client's tree does not have"
+        ),
+        Blocked::TierLocked {
+            tree,
+            talent,
+            tier,
+            needed,
+            spent,
+        } => format!(
+            "{talent} is in row {tier} of {tree}, which opens at {needed} points; {spent} are spent there"
+        ),
+        Blocked::NeedsPrerequisite {
+            tree,
+            talent,
+            requires,
+        } => format!("{talent} in {tree} needs {requires} maxed first"),
     }
 }

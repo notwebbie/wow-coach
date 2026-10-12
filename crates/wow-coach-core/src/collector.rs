@@ -284,6 +284,37 @@ pub struct Talents {
 pub struct TalentTree {
     pub name: Option<String>,
     pub points_spent: Option<u16>,
+    /// Every talent in the tree, learned or not. Absent on records written
+    /// before per-talent capture, and on Forever when the node API failed —
+    /// "not captured", never "no talents".
+    #[serde(deserialize_with = "empty_table_as_list")]
+    pub talents: Option<Vec<Talent>>,
+}
+
+/// One talent as the talent frame lays it out.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Talent {
+    pub name: Option<String>,
+    /// 1-based row. Row `n` opens once `5 * (n - 1)` points are in the tree.
+    pub tier: Option<u8>,
+    /// 1-based column, for display and for matching `requires`.
+    pub column: Option<u8>,
+    /// Committed points only.
+    pub rank: Option<u8>,
+    pub max_rank: Option<u8>,
+    /// Forever only; a locale-independent identity.
+    #[serde(rename = "spellID")]
+    pub spell_id: Option<u32>,
+    /// The talent an arrow points from, which must be maxed first.
+    pub requires: Option<TalentPosition>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct TalentPosition {
+    pub tier: u8,
+    pub column: u8,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

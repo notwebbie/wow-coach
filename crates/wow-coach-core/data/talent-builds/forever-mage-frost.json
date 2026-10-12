@@ -1,0 +1,73 @@
+{
+  "id": "forever-mage-frost",
+  "flavor": "forever",
+  "class": "MAGE",
+  "spec": "Frost",
+  "summary": "Frost levelling to 30: Improved Frostbolt, Frostbite, Ice Shards, Piercing Ice, Ice Lance, Shatter, Fingers of Frost.",
+  "sources": [
+    "https://mobalytics.gg/wow-forever/classes/mage-leveling-guide",
+    "https://www.icy-veins.com/wow-forever/frost-mage-ranged-dps-pve-guide",
+    "https://www.wowhead.com/forever/guide/classes/mage/frost/level-20-dps-overview"
+  ],
+  "notes": [
+    "Follows Mobalytics' ordered build, which stops at 30 (the beta cap).",
+    "Wowhead's solo alternative opens with Wand Specialization (Arcane) then Frostbite and Permafrost; not merged here.",
+    "Ice Lance wants a freeze, and this order has no Permafrost; Frost Nova is the freeze."
+  ],
+  "steps": [
+    {
+      "tree": "Frost",
+      "talent": "Improved Frostbolt",
+      "rank": 5,
+      "tier": 1
+    },
+    {
+      "tree": "Frost",
+      "talent": "Frostbite",
+      "rank": 2,
+      "tier": 2
+    },
+    {
+      "tree": "Frost",
+      "talent": "Ice Shards",
+      "rank": 3,
+      "tier": 2
+    },
+    {
+      "tree": "Frost",
+      "talent": "Piercing Ice",
+      "rank": 3,
+      "tier": 3
+    },
+    {
+      "tree": "Frost",
+      "talent": "Ice Lance",
+      "rank": 1,
+      "tier": 3
+    },
+    {
+      "tree": "Frost",
+      "talent": "Improved Blizzard",
+      "rank": 1,
+      "tier": 3
+    },
+    {
+      "tree": "Frost",
+      "talent": "Ice Shards",
+      "rank": 5,
+      "tier": 2
+    },
+    {
+      "tree": "Frost",
+      "talent": "Shatter",
+      "rank": 3,
+      "tier": 4
+    },
+    {
+      "tree": "Frost",
+      "talent": "Fingers of Frost",
+      "rank": 1,
+      "tier": 5
+    }
+  ]
+}

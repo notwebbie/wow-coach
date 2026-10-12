@@ -122,6 +122,48 @@ function C_Traits.GetTreeCurrencyInfo(configID, treeID, exclude)
     return { { quantity = 3, maxQuantity = 51, spent = 26, spentInTree = 26 } }
 end
 
+-- Per-node detail. Coordinates are pixels, deliberately unevenly spaced and
+-- listed out of order, so the collector has to rank them rather than divide.
+-- Node 505 has a point placed but not applied (currentRank 1, purchased 0):
+-- only committed ranks may be recorded. Node 509 belongs to a group that is
+-- not one of the three tabs and must be ignored. Node 0 is the API's empty
+-- slot marker.
+local trait_nodes = {
+    [501] = { ID = 501, posX = 1800, posY = 1200, groupIDs = { 13 }, ranksPurchased = 0,
+              currentRank = 0, maxRanks = 2, entryIDs = { 601 } },
+    [502] = { ID = 502, posX = 2400, posY = 1200, groupIDs = { 13 }, ranksPurchased = 5,
+              currentRank = 5, maxRanks = 5, entryIDs = { 602 }, activeEntry = { entryID = 602, rank = 5 },
+              visibleEdges = { { targetNode = 504, type = 1, isActive = true } } },
+    [503] = { ID = 503, posX = 1800, posY = 1950, groupIDs = { 13, 77 }, ranksPurchased = 0,
+              currentRank = 0, maxRanks = 5, entryIDs = { 603 } },
+    [504] = { ID = 504, posX = 3900, posY = 1950, groupIDs = { 13 }, ranksPurchased = 0,
+              currentRank = 0, maxRanks = 3, entryIDs = { 604 } },
+    [505] = { ID = 505, posX = 1800, posY = 1200, groupIDs = { 12 }, ranksPurchased = 0,
+              currentRank = 1, maxRanks = 5, entryIDs = { 605 } },
+    [509] = { ID = 509, posX = 100, posY = 100, groupIDs = { 99 }, ranksPurchased = 1,
+              currentRank = 1, maxRanks = 1, entryIDs = { 609 } },
+}
+function C_Traits.GetTreeNodes(treeID)
+    if treeID ~= 900 then return {} end
+    return { 504, 509, 503, 0, 502, 505, 501 }
+end
+function C_Traits.GetNodeInfo(configID, nodeID)
+    return trait_nodes[nodeID] or { ID = 0 }
+end
+function C_Traits.GetEntryInfo(configID, entryID)
+    return { definitionID = entryID + 100, maxRanks = 1 }
+end
+local trait_definitions = {
+    [701] = { spellID = 11189 }, [702] = { spellID = 16766 }, [703] = { spellID = 11207 },
+    [704] = { spellID = 11175, overrideName = "Permafrost" },
+    [705] = { spellID = 11069 }, [709] = { spellID = 1 },
+}
+function C_Traits.GetDefinitionInfo(definitionID) return trait_definitions[definitionID] end
+local spell_names = { [11189] = "Frost Warding", [16766] = "Improved Frostbolt",
+                      [11207] = "Ice Shards", [11069] = "Improved Fireball", [1] = "Hidden" }
+C_Spell = C_Spell or {}
+function C_Spell.GetSpellName(spellID) return spell_names[spellID] end
+
 -- Rulesets. Normal is the absence of all three, not a value of its own.
 Enum = { GameRule = { HardcoreRuleset = 10, PvPRuleset = 213, RPRuleset = 214,
                       SelfFoundAllowed = 22 } }
@@ -233,6 +275,30 @@ for _, tree in ipairs(snap.talents and snap.talents.trees or {}) do
 end
 check(fire and fire.pointsSpent == 21, "pointsSpent from group currency info")
 check(snap.talents and snap.talents.unspentPoints == 3, "unspent points from tree currency")
+local frost_trait
+for _, tree in ipairs(snap.talents and snap.talents.trees or {}) do
+    if tree.name == "Frost" then frost_trait = tree end
+    if tree.name == "Arcane" then check(tree.talents == nil, "a group with no nodes stores no list") end
+end
+local ft = frost_trait and frost_trait.talents or {}
+check(#ft == 4, "only the group's own nodes captured; empty slots and other groups ignored")
+check(ft[1] and ft[1].name == "Frost Warding" and ft[1].tier == 1 and ft[1].column == 1,
+    "pixel positions ranked into tier 1, column 1")
+check(ft[2] and ft[2].name == "Improved Frostbolt" and ft[2].column == 2 and ft[2].rank == 5,
+    "second column and committed rank")
+check(ft[2] and ft[2].spellID == 16766, "spellID kept as a stable identity")
+check(ft[3] and ft[3].name == "Ice Shards" and ft[3].tier == 2, "second distinct row is tier 2")
+check(ft[4] and ft[4].name == "Permafrost", "overrideName preferred over the spell name")
+check(ft[4] and ft[4].column == 3, "columns ranked over the whole group, not per row")
+check(ft[4] and ft[4].requires and ft[4].requires.tier == 1 and ft[4].requires.column == 2,
+    "an edge into a node becomes its prerequisite")
+local fire_trait
+for _, tree in ipairs(snap.talents and snap.talents.trees or {}) do
+    if tree.name == "Fire" then fire_trait = tree end
+end
+local fireball = fire_trait and fire_trait.talents and fire_trait.talents[1]
+check(fireball and fireball.rank == 0, "a placed but unapplied point is not a purchased rank")
+check(fireball and fireball.maxRank == 5, "maxRank from the node")
 
 -- Ruleset: Normal is all three false, and false is recorded, not omitted.
 check(snap.ruleset ~= nil, "ruleset captured on Forever")
@@ -380,6 +446,19 @@ C_PetInfo.GetPetLoyalty = function() return end
 C_PetInfo.GetPetTrainingPoints = function() return end
 local ok, err = pcall(collector.capture)
 check(ok, "capture must survive pet APIs returning no values: " .. tostring(err))
+
+-- Per-node detail is unproven on the live client. If it throws, the tree
+-- totals must survive without it.
+local realGetNodeInfo = C_Traits.GetNodeInfo
+C_Traits.GetNodeInfo = function() error("node API changed") end
+ok, err = pcall(collector.capture)
+check(ok, "capture must survive a failing node API: " .. tostring(err))
+local survived = record().talents
+check(survived and #survived.trees == 3, "tree totals kept when node detail fails")
+check(survived and survived.trees[3].talents == nil, "no partial detail stored when node detail fails")
+C_Traits.GetNodeInfo = realGetNodeInfo
+collector.capture()
+check(record().talents.trees[3].talents ~= nil, "detail returns once the node API works again")
 
 --------------------------------------------------------------------------------
 

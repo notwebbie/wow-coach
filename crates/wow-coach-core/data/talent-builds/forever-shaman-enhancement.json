@@ -1,0 +1,63 @@
+{
+  "id": "forever-shaman-enhancement",
+  "flavor": "forever",
+  "class": "SHAMAN",
+  "spec": "Enhancement",
+  "summary": "Enhancement levelling to 30: Thundering Strikes, Mental Dexterity and Improved Ghost Wolf by 20, Stormstrike at 25, Flurry and Improved Stormstrike by 30.",
+  "sources": [
+    "https://mobalytics.gg/wow-forever/classes/shaman-leveling-guide",
+    "https://www.icy-veins.com/wow-forever/enhancement-shaman-melee-dps-pve-guide",
+    "https://www.method.gg/wow-forever/wow-forever-shaman-leveling-guide-and-talents"
+  ],
+  "notes": [
+    "Levels 10-20 follow Mobalytics exactly; 21-30 are assembled from Icy Veins, with Elemental Weapons 3 inferred to reach the Stormstrike tier.",
+    "Tiers are not published for this tree yet; the planner uses the game's own."
+  ],
+  "steps": [
+    {
+      "tree": "Enhancement",
+      "talent": "Thundering Strikes",
+      "rank": 5
+    },
+    {
+      "tree": "Enhancement",
+      "talent": "Mental Dexterity",
+      "rank": 3
+    },
+    {
+      "tree": "Enhancement",
+      "talent": "Improved Ghost Wolf",
+      "rank": 2
+    },
+    {
+      "tree": "Enhancement",
+      "talent": "Shamanistic Focus",
+      "rank": 1
+    },
+    {
+      "tree": "Enhancement",
+      "talent": "Elemental Weapons",
+      "rank": 3
+    },
+    {
+      "tree": "Enhancement",
+      "talent": "Ancestral Knowledge",
+      "rank": 1
+    },
+    {
+      "tree": "Enhancement",
+      "talent": "Stormstrike",
+      "rank": 1
+    },
+    {
+      "tree": "Enhancement",
+      "talent": "Flurry",
+      "rank": 4
+    },
+    {
+      "tree": "Enhancement",
+      "talent": "Improved Stormstrike",
+      "rank": 1
+    }
+  ]
+}

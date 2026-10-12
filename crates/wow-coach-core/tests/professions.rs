@@ -495,7 +495,11 @@ fn gatherer(name: &str, level: u16, profession: &str, rank: u16, max_rank: u16) 
 fn a_profession_with_no_window_still_gets_its_trainer_line() {
     let plans = plan_for(vec![gatherer("Skinner", 25, "Skinning", 75, 75)]);
 
-    assert_eq!(plans.len(), 1, "the client's own list is enough to plan from");
+    assert_eq!(
+        plans.len(),
+        1,
+        "the client's own list is enough to plan from"
+    );
     let plan = &plans[0];
     assert_eq!(plan.profession, "Skinning");
     assert_eq!(plan.rank, Some(75));
@@ -520,7 +524,9 @@ fn no_window_is_reported_as_unknown_rather_than_as_nothing_left_to_make() {
         "never looked is not the same as nothing left"
     );
     assert!(
-        plan.notes.iter().any(|note| note.contains("never been opened")),
+        plan.notes
+            .iter()
+            .any(|note| note.contains("never been opened")),
         "got {:?}",
         plan.notes
     );

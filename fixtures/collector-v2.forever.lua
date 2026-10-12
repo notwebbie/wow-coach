@@ -159,10 +159,58 @@ WoWCoachCollectorDB = {
 					{
 						["name"] = "Fire",
 						["pointsSpent"] = 21,
+						["talents"] = {
+							{
+								["column"] = 1,
+								["maxRank"] = 5,
+								["name"] = "Improved Fireball",
+								["rank"] = 0,
+								["spellID"] = 11069,
+								["tier"] = 1,
+							},
+						},
 					},
 					{
 						["name"] = "Frost",
 						["pointsSpent"] = 5,
+						["talents"] = {
+							{
+								["column"] = 1,
+								["maxRank"] = 2,
+								["name"] = "Frost Warding",
+								["rank"] = 0,
+								["spellID"] = 11189,
+								["tier"] = 1,
+							},
+							{
+								["column"] = 2,
+								["maxRank"] = 5,
+								["name"] = "Improved Frostbolt",
+								["rank"] = 5,
+								["spellID"] = 16766,
+								["tier"] = 1,
+							},
+							{
+								["column"] = 1,
+								["maxRank"] = 5,
+								["name"] = "Ice Shards",
+								["rank"] = 0,
+								["spellID"] = 11207,
+								["tier"] = 2,
+							},
+							{
+								["column"] = 3,
+								["maxRank"] = 3,
+								["name"] = "Permafrost",
+								["rank"] = 0,
+								["requires"] = {
+									["column"] = 2,
+									["tier"] = 1,
+								},
+								["spellID"] = 11175,
+								["tier"] = 2,
+							},
+						},
 					},
 				},
 				["unspentPoints"] = 3,

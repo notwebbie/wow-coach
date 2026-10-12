@@ -175,10 +175,48 @@ hid a character's Cooking during the probe that found this API.
 
 ```lua
 ["talents"] = {
-    ["trees"] = { { ["name"] = "Fire", ["pointsSpent"] = 31 }, ... },
+    ["trees"] = {
+        {
+            ["name"] = "Frost",
+            ["pointsSpent"] = 5,
+            ["talents"] = {
+                {
+                    ["name"] = "Improved Frostbolt",
+                    ["tier"] = 1,
+                    ["column"] = 2,
+                    ["rank"] = 5,
+                    ["maxRank"] = 5,
+                    ["spellID"] = 16766,     -- Forever only
+                },
+                {
+                    ["name"] = "Permafrost",
+                    ["tier"] = 2,
+                    ["column"] = 3,
+                    ["rank"] = 0,
+                    ["maxRank"] = 3,
+                    ["requires"] = { ["tier"] = 1, ["column"] = 2 },
+                }, ...
+            },
+        }, ...
+    },
     ["unspentPoints"] = 2,
 },
 ```
+
+`talents` inside a tree was added within version 2. Readers must treat its
+absence as "not captured", which is what every record written before it looks
+like, and what a Forever record looks like if the per-node trait API fails. A
+failure there drops only the detail. The tree totals are still kept.
+
+Every talent in the tree is listed, learned or not. `rank` is the number of
+committed points: on Forever, a point placed in the talent frame but not yet
+applied is not counted. `tier` and `column` are 1-based positions in the grid the
+talent frame draws. Classic returns them directly. Forever exposes only pixel
+coordinates per node, and the collector ranks the distinct values within each
+tree to recover the same grid. That is decoding, not judgement, in the same way
+the quest state's sign is. `requires` is the talent an arrow points from, and
+it is absent when there is none. `spellID` is a stable, locale-independent
+identity, but only Forever supplies it.
 
 ### Quests
 

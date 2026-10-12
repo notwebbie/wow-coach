@@ -1,0 +1,154 @@
+{
+  "id": "tbc-mage-frost",
+  "flavor": "tbc_classic",
+  "class": "MAGE",
+  "spec": "Frost",
+  "summary": "Single-target Frost levelling: Improved Frostbolt, Shatter, Ice Shards, Ice Barrier, Arctic Winds, Empowered Frostbolt and Water Elemental at 50, then Arcane support and Winter's Chill (10/0/51 at 70).",
+  "sources": [
+    "https://icy-veins.com/tbc-classic/frost-single-target-mage-leveling-guide"
+  ],
+  "notes": [
+    "Icy Veins says the Frost points may be reordered to taste; this follows its bracket list.",
+    "Piercing Ice and Frost Channeling are filled a little earlier than the bracket list so the Shatter and Ice Barrier tiers are open when reached."
+  ],
+  "steps": [
+    {
+      "tree": "Frost",
+      "talent": "Improved Frostbolt",
+      "rank": 5,
+      "tier": 1
+    },
+    {
+      "tree": "Frost",
+      "talent": "Elemental Precision",
+      "rank": 3,
+      "tier": 1
+    },
+    {
+      "tree": "Frost",
+      "talent": "Frostbite",
+      "rank": 2,
+      "tier": 2
+    },
+    {
+      "tree": "Frost",
+      "talent": "Icy Veins",
+      "rank": 1,
+      "tier": 3
+    },
+    {
+      "tree": "Frost",
+      "talent": "Frostbite",
+      "rank": 3,
+      "tier": 2
+    },
+    {
+      "tree": "Frost",
+      "talent": "Improved Frost Nova",
+      "rank": 2,
+      "tier": 2
+    },
+    {
+      "tree": "Frost",
+      "talent": "Piercing Ice",
+      "rank": 2,
+      "tier": 3
+    },
+    {
+      "tree": "Frost",
+      "talent": "Shatter",
+      "rank": 5,
+      "tier": 4
+    },
+    {
+      "tree": "Frost",
+      "talent": "Ice Shards",
+      "rank": 5,
+      "tier": 2
+    },
+    {
+      "tree": "Frost",
+      "talent": "Piercing Ice",
+      "rank": 3,
+      "tier": 3
+    },
+    {
+      "tree": "Frost",
+      "talent": "Frost Channeling",
+      "rank": 3,
+      "tier": 4
+    },
+    {
+      "tree": "Frost",
+      "talent": "Cold Snap",
+      "rank": 1,
+      "tier": 5
+    },
+    {
+      "tree": "Frost",
+      "talent": "Ice Barrier",
+      "rank": 1,
+      "tier": 7
+    },
+    {
+      "tree": "Frost",
+      "talent": "Arctic Winds",
+      "rank": 5,
+      "tier": 7
+    },
+    {
+      "tree": "Frost",
+      "talent": "Empowered Frostbolt",
+      "rank": 4,
+      "tier": 8
+    },
+    {
+      "tree": "Frost",
+      "talent": "Summon Water Elemental",
+      "rank": 1,
+      "tier": 9
+    },
+    {
+      "tree": "Frost",
+      "talent": "Empowered Frostbolt",
+      "rank": 5,
+      "tier": 8
+    },
+    {
+      "tree": "Arcane",
+      "talent": "Arcane Subtlety",
+      "rank": 2,
+      "tier": 1
+    },
+    {
+      "tree": "Arcane",
+      "talent": "Arcane Focus",
+      "rank": 3,
+      "tier": 1
+    },
+    {
+      "tree": "Arcane",
+      "talent": "Arcane Concentration",
+      "rank": 5,
+      "tier": 2
+    },
+    {
+      "tree": "Frost",
+      "talent": "Arctic Reach",
+      "rank": 2,
+      "tier": 4
+    },
+    {
+      "tree": "Frost",
+      "talent": "Winter's Chill",
+      "rank": 5,
+      "tier": 6
+    },
+    {
+      "tree": "Frost",
+      "talent": "Ice Floes",
+      "rank": 1,
+      "tier": 6
+    }
+  ]
+}

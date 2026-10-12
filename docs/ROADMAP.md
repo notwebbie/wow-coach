@@ -64,6 +64,12 @@ architecture it builds toward is recorded in [ARCHITECTURE.md](ARCHITECTURE.md).
   unspent talent points, a profession at its cap.
 - Declines to rank on a rested model it does not have, which is the Forever case.
 - Says when it is ranking only part of the roster.
+- Talent planning for every class: the collector records each talent's tier,
+  column, rank and prerequisite from the game itself, and `wow-coach talents`
+  walks a published build against that tree, honouring tier gates and arrows.
+  Shipped builds cover the specs currently being levelled (Forever Affliction,
+  Frost, Enhancement and Beast Mastery; TBC Affliction and Frost). Any other
+  spec reports that it has no build rather than inventing one.
 - Still to come: quest planning, professions and economy.
 
 ## Progress history · in progress

@@ -1,0 +1,83 @@
+{
+  "id": "forever-warlock-affliction",
+  "flavor": "forever",
+  "class": "WARLOCK",
+  "spec": "Affliction",
+  "summary": "Affliction levelling: Suppression and Improved Corruption, then Malediction into Improved Bane of Agony, Nightfall and Siphon Life.",
+  "sources": [
+    "https://www.icy-veins.com/wow-forever/affliction-warlock-ranged-dps-pve-guide",
+    "https://www.method.gg/wow-forever/wow-forever-warlock-leveling-guide-and-talents"
+  ],
+  "notes": [
+    "Levels 10-30 follow Icy Veins' beta build. Suppression 5, Pandemic and Shadow Mastery after 30 come from Method's prose and are unverified.",
+    "Guides split on Suppression or Improved Corruption first; both orders are spendable."
+  ],
+  "steps": [
+    {
+      "tree": "Affliction",
+      "talent": "Suppression",
+      "rank": 4,
+      "tier": 1
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Improved Corruption",
+      "rank": 5,
+      "tier": 1
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Malediction",
+      "rank": 1,
+      "tier": 2
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Improved Bane of Agony",
+      "rank": 2,
+      "tier": 3
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Malediction",
+      "rank": 5,
+      "tier": 2
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Nightfall",
+      "rank": 2,
+      "tier": 4
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Improved Life Tap",
+      "rank": 2,
+      "tier": 1
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Siphon Life",
+      "rank": 1,
+      "tier": 5
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Suppression",
+      "rank": 5,
+      "tier": 1
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Pandemic",
+      "rank": 3,
+      "tier": 3
+    },
+    {
+      "tree": "Affliction",
+      "talent": "Shadow Mastery",
+      "rank": 5,
+      "tier": 6
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "id": "forever-hunter-beast-mastery",
+  "flavor": "forever",
+  "class": "HUNTER",
+  "spec": "Beast Mastery",
+  "summary": "Beast Mastery levelling to 30: Deadly Aspects, Pathfinding, Unleashed Fury, Summon Hawk at 25, Ferocity, Intimidation.",
+  "sources": [
+    "https://mobalytics.gg/wow-forever/classes/beast-mastery-leveling-guide",
+    "https://www.icy-veins.com/wow-forever/beast-mastery-hunter-ranged-dps-pve-guide",
+    "https://www.method.gg/wow-forever/wow-forever-hunter-leveling-guide-and-talents"
+  ],
+  "notes": [
+    "Mobalytics' level-by-level table, which stops at 30 (the beta cap).",
+    "Intimidation is 1 rank per one source and 2 per another; the game's maximum wins."
+  ],
+  "steps": [
+    {
+      "tree": "Beast Mastery",
+      "talent": "Deadly Aspects",
+      "rank": 5
+    },
+    {
+      "tree": "Beast Mastery",
+      "talent": "Focused Fire",
+      "rank": 2
+    },
+    {
+      "tree": "Beast Mastery",
+      "talent": "Improved Revive Pet",
+      "rank": 1
+    },
+    {
+      "tree": "Beast Mastery",
+      "talent": "Pathfinding",
+      "rank": 2
+    },
+    {
+      "tree": "Beast Mastery",
+      "talent": "Bestial Swiftness",
+      "rank": 1,
+      "tier": 3
+    },
+    {
+      "tree": "Beast Mastery",
+      "talent": "Unleashed Fury",
+      "rank": 4
+    },
+    {
+      "tree": "Beast Mastery",
+      "talent": "Summon Hawk",
+      "rank": 1
+    },
+    {
+      "tree": "Beast Mastery",
+      "talent": "Unleashed Fury",
+      "rank": 5
+    },
+    {
+      "tree": "Beast Mastery",
+      "talent": "Ferocity",
+      "rank": 3
+    },
+    {
+      "tree": "Beast Mastery",
+      "talent": "Intimidation",
+      "rank": 2
+    }
+  ]
+}

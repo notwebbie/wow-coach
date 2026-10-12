@@ -205,6 +205,47 @@ WoWCoachCollectorDB = {
 					{
 						["name"] = "Frost",
 						["pointsSpent"] = 5,
+						["talents"] = {
+							{
+								["column"] = 1,
+								["maxRank"] = 2,
+								["name"] = "Frost Warding",
+								["rank"] = 0,
+								["tier"] = 1,
+							},
+							{
+								["column"] = 2,
+								["maxRank"] = 5,
+								["name"] = "Improved Frostbolt",
+								["rank"] = 5,
+								["tier"] = 1,
+							},
+							{
+								["column"] = 3,
+								["maxRank"] = 3,
+								["name"] = "Elemental Precision",
+								["rank"] = 0,
+								["tier"] = 1,
+							},
+							{
+								["column"] = 1,
+								["maxRank"] = 5,
+								["name"] = "Ice Shards",
+								["rank"] = 0,
+								["tier"] = 2,
+							},
+							{
+								["column"] = 4,
+								["maxRank"] = 3,
+								["name"] = "Permafrost",
+								["rank"] = 0,
+								["requires"] = {
+									["column"] = 2,
+									["tier"] = 1,
+								},
+								["tier"] = 2,
+							},
+						},
 					},
 				},
 				["unspentPoints"] = 2,
