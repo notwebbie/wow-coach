@@ -19,43 +19,57 @@ fn character(flavor: &str, max_xp: u64, rested_xp: u64) -> CharacterRecord {
 }
 
 #[test]
-fn measuring_the_rate_does_not_unlock_the_cap() {
-    // The headline. Forever's fill rate is measured and settled, and nothing
-    // observed says where the bar stops — the parked run sailed through
-    // Classic's cap without slowing. Knowing a cap is *not* 1.5 levels is not
-    // knowing what it is, so the ranking must still refuse to rank on rest.
+fn the_forever_cap_is_classics_after_all_and_says_how_it_got_there() {
+    // This test replaces one that asserted the opposite, and the replacement is
+    // the point. The earlier version pinned "the cap is NOT 1.5 levels" against
+    // a single reading of 790 on a 400 XP level. Six days later the same
+    // character read exactly 600 with its XP untouched — a clamp, not spending.
+    // The beta had been over-accruing past its own cap and was corrected.
+    //
+    // So the guard now runs the other way: the number is Classic's, and the
+    // record of how it was reached has to travel with it, or the next person
+    // sees a clean 1.5 and never learns it was contested.
     let model = rested::model_for(Some("forever"));
 
-    assert!(model.rate_per_8h.is_some(), "the rate is known");
-    assert!(model.rate_basis.is_known());
-    assert!(matches!(model.rate_basis, Basis::Measured { .. }));
+    assert_eq!(model.cap_levels, Some(1.5));
+    assert!(model.cap_basis.is_known());
 
-    assert!(model.cap_levels.is_none(), "the cap is not");
-    assert!(!model.cap_basis.is_known());
-
-    // Specifically not Classic's. A later edit that reaches for the familiar
-    // number would be contradicted by a reading of 790 on a 400 XP level, and
-    // this is where that edit should fail.
-    assert_ne!(
-        model.cap_levels,
-        Some(1.5),
-        "the parked character passed 1.5 levels and kept filling"
-    );
     match model.cap_basis {
-        Basis::Unknown { why } => assert!(
-            why.contains("1.5 levels"),
-            "an unknown that has been narrowed should say what it has ruled out: {why}"
-        ),
-        other => panic!("expected an unknown cap, got {other:?}"),
+        Basis::Measured { samples, note } => {
+            assert_eq!(samples, 1, "exactly one reading sits on the cap so far");
+            assert!(
+                note.contains("790"),
+                "the contradicted reading belongs in the record, not only in history: {note}"
+            );
+            assert!(
+                note.contains("clamp"),
+                "and the reason it was contradicted: {note}"
+            );
+        }
+        other => panic!("expected a measured cap carrying its history, got {other:?}"),
     }
 
-    let record = character("forever", 400, 62);
+    // Measured, not Established. Classic's cap has twenty years behind it; this
+    // one has a single reading taken after a bug was fixed, and the difference
+    // must stay visible to anything that reports provenance.
     assert!(
-        !record.rested_cap_is_known(),
-        "and a character on it still cannot be ranked on rest"
+        !matches!(model.cap_basis, Basis::Established),
+        "one post-patch reading is not twenty years of settled behaviour"
     );
-    assert_eq!(record.rested_cap(), None);
-    assert_eq!(record.rested_fraction(), None);
+    assert!(matches!(
+        rested::model_for(Some("classic_era")).cap_basis,
+        Basis::Established
+    ));
+}
+
+#[test]
+fn a_character_on_forever_can_now_be_ranked_on_rest() {
+    // The practical consequence. While the cap was unknown this returned
+    // nothing, because a fraction of an unknown total is not a number.
+    let record = character("forever", 400, 300);
+    assert!(record.rested_cap_is_known());
+    assert_eq!(record.rested_cap(), Some(600));
+    assert_eq!(record.rested_fraction(), Some(0.5));
 }
 
 #[test]
@@ -99,19 +113,25 @@ fn classic_keeps_the_cap_it_has_always_had() {
 
 #[test]
 fn hours_to_cap_needs_both_numbers_not_just_the_rate() {
-    // Forever knows how fast the bar fills and not where it stops, so it
-    // cannot say when filling ends. Returning a figure from the rate alone
-    // would be inventing the cap.
+    // Forever can answer this now that the cap is measured. It could not while
+    // the cap was unknown, and the shape of the guard is what matters: the
+    // answer comes from both numbers, never from the rate alone.
     let forever = rested::model_for(Some("forever"));
     assert!(
         forever.xp_per_hour(400).is_some(),
         "the rate alone is usable"
     );
-    assert_eq!(
-        forever.hours_to_cap(62, 400),
-        None,
-        "but not for a question that needs the cap"
-    );
+    // 5% of 400 per 8h = 2.5/h; cap 600; from 62 that is 215.2 hours.
+    let hours = forever.hours_to_cap(62, 400).expect("both known now");
+    assert!((hours - 215.2).abs() < 0.5, "got {hours}");
+
+    // A client whose cap is genuinely unknown still refuses, which is the
+    // behaviour this test was written to protect and must outlive the day
+    // Forever's cap happened to get measured.
+    let unknown = rested::model_for(Some("some_future_client"));
+    if unknown.cap_levels.is_none() {
+        assert_eq!(unknown.hours_to_cap(62, 400), None);
+    }
 
     let classic = rested::model_for(Some("tbc_classic"));
     // 5% of 20,800 per 8h = 130/h; cap 31,200; from zero that is 240 hours.
@@ -156,11 +176,12 @@ fn the_forever_rate_matches_the_long_run_not_the_short_one() {
         "the measurement came in at Classic's 5%"
     );
 
-    // But not Classic's certainty: the cap is still unobserved here, and that
-    // is what gates the ranking.
-    assert!(model.cap_levels.is_none());
-    assert!(!model.cap_basis.is_known());
-    assert!(classic.cap_basis.is_known());
+    // The cap landed on Classic's number too, but not on Classic's certainty.
+    // Classic's is Established; Forever's is one reading taken after the beta
+    // stopped over-accruing, and the provenance has to stay distinguishable.
+    assert_eq!(model.cap_levels, classic.cap_levels);
+    assert!(matches!(model.cap_basis, Basis::Measured { .. }));
+    assert!(matches!(classic.cap_basis, Basis::Established));
 }
 
 #[test]

@@ -149,12 +149,15 @@ fn the_rested_cap_is_known_only_where_the_model_holds() {
     let fraction = tbc.rested_fraction().unwrap();
     assert!((fraction - 900.0 / 11_700.0).abs() < 1e-9);
 
+    // Forever's cap was unknown here until 15 October, when a parked character
+    // that had read 790 read exactly 600 with its XP untouched — the beta
+    // correcting an over-accrual, and the only reading that has ever sat on
+    // the cap. It is Classic's 1.5 levels.
     let loaded = collector::load(&fixture("collector-v2.forever.lua")).unwrap();
     let forever = loaded.db.characters.values().next().unwrap();
-    assert!(
-        !forever.rested_cap_is_known(),
-        "the Well Rested perk changes the cap and the rate, and neither is exposed"
-    );
+    assert!(forever.rested_cap_is_known());
+    let max_xp = forever.max_xp.expect("the fixture carries one");
+    assert_eq!(forever.rested_cap(), Some((max_xp as f64 * 1.5) as u64));
 }
 
 #[test]
@@ -679,4 +682,56 @@ WoWCoachCollectorDB = {
         None,
         "an unknown code is absent rather than a guess"
     );
+}
+
+#[test]
+fn an_empty_profession_list_is_only_an_answer_when_the_client_counted() {
+    // The distinction this project got wrong once. Both shapes below are an
+    // empty list in the file; only one of them is the client saying "none".
+    use wow_coach_core::collector::CharacterRecord;
+
+    let stub = CharacterRecord {
+        professions: Some(Vec::new()),
+        professions_returned: Some(0),
+        ..Default::default()
+    };
+    assert!(
+        !stub.profession_list_is_usable(),
+        "a client that returned nothing has told us nothing"
+    );
+
+    let genuinely_none = CharacterRecord {
+        professions: Some(Vec::new()),
+        professions_returned: Some(6),
+        ..Default::default()
+    };
+    assert!(
+        genuinely_none.profession_list_is_usable(),
+        "six slots inspected and all empty is a real answer"
+    );
+
+    let old_capture = CharacterRecord {
+        professions: Some(Vec::new()),
+        professions_returned: None,
+        ..Default::default()
+    };
+    assert!(
+        !old_capture.profession_list_is_usable(),
+        "captures predating the arity are exactly the ones that misled us"
+    );
+
+    let never_asked = CharacterRecord::default();
+    assert!(!never_asked.profession_list_is_usable());
+}
+
+#[test]
+fn the_live_stub_shape_round_trips() {
+    // The Anniversary fixture is generated from a harness whose GetProfessions
+    // returns nothing, matching interface 20506. Reading it back must produce
+    // the unusable-empty case rather than a confident "no professions".
+    let loaded = collector::load(&fixture("collector-v2.tbc.lua")).unwrap();
+    let record = loaded.db.characters.values().next().unwrap();
+    assert_eq!(record.professions.as_ref().map(Vec::len), Some(0));
+    assert_eq!(record.professions_returned, Some(0));
+    assert!(!record.profession_list_is_usable());
 }

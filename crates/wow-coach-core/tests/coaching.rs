@@ -243,7 +243,16 @@ fn an_incomplete_roster_qualifies_the_advice() {
 }
 
 #[test]
-fn forever_characters_are_not_ranked_on_a_rested_model_we_do_not_have() {
+fn forever_characters_are_ranked_now_but_the_perk_assumption_is_stated() {
+    // This replaces a test that asserted Forever characters could not be
+    // ranked on rest at all. That was right while the cap was unmeasured; it
+    // has since been measured, so refusing would now be withholding a usable
+    // answer.
+    //
+    // What did not become knowable is the Legacy "Well Rested" perk, which
+    // changes both numbers and is not reported. So the ranking proceeds on the
+    // no-perk baseline and says so — which is the whole difference between an
+    // assumption and a quiet guess.
     let mut record = character("Foreverchar", 24, 24_600, 16_400);
     record.game_flavor = Some("forever".to_string());
     let characters = roster_of(vec![record]);
@@ -251,16 +260,27 @@ fn forever_characters_are_not_ranked_on_a_rested_model_we_do_not_have() {
     let advice = coaching::advise(&entries, true);
 
     let next = advice.play_next().unwrap();
-    assert!(matches!(next.rested, Rested::Unknown { .. }));
     assert!(
-        next.reasons.join(" ").contains("Well Rested"),
-        "it should say why it cannot rank this one: {:?}",
-        next.reasons
+        !matches!(next.rested, Rested::Unknown { .. }),
+        "the cap is measured now, so this is rankable: {:?}",
+        next.rested
     );
-    assert!(advice
-        .caveats
-        .iter()
-        .any(|caveat| caveat.contains("could not be ranked")));
+    assert!(
+        advice
+            .caveats
+            .iter()
+            .any(|caveat| caveat.contains("Well Rested")),
+        "the unreadable perk must still be declared: {:?}",
+        advice.caveats
+    );
+    assert!(
+        !advice
+            .caveats
+            .iter()
+            .any(|caveat| caveat.contains("could not be ranked")),
+        "and the old refusal must be gone: {:?}",
+        advice.caveats
+    );
 }
 
 #[test]

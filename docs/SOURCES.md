@@ -35,6 +35,15 @@ from position at all and asks `GetProfessionInfo` for each index, which names
 the profession itself. A client-reported fact is still worth checking against
 its documentation; the answer here was to depend on less of it.
 
+**And a client-reported fact can still be a lie.** On the Anniversary client
+`GetProfessions` exists and returns nothing, so the capability check passes and
+the answer is empty — for characters that demonstrably have professions. The
+first category in this document is "what the client reported", and it is still
+the most trustworthy, but *reported* is not the same as *correct*. The fix was
+to record how many values the call returned, so an empty answer and a broken
+one stop being the same bytes. The gathering-profession gap that
+`GetProfessions` closed on WoW Forever therefore remains open on Anniversary.
+
 **2. A constant in the code, with a source.** Facts the client does not report:
 what a teleport spell id means, where a training tier stops, how fast rested XP
 accrues. Every one of these is listed below with where it came from.

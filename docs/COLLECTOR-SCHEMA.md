@@ -152,10 +152,28 @@ language without matching a name in the player's locale, and unlike the recipe
 cache it needs no window opened — which is why a gathering profession with no
 trade skill window is visible here and nowhere else.
 
+```lua
+["professionsReturned"] = 6,
+```
+
 **Absent means not captured**, either because the capture predates this field
-or because the client has no `GetProfessions`. **An empty list means the client
-was asked and reported no professions**, which is a usable fact and must not be
-shown the same way.
+or because the client has no `GetProfessions`.
+
+**An empty list means nothing on its own, and this was documented wrongly.**
+The first version of this section said an empty list meant "the client was
+asked and reported no professions", which held for about a week. On the
+Anniversary client (interface 20506) `GetProfessions` exists — so the
+capability check passes — and returns no values at all. Two characters there,
+carrying Tailoring 175, Enchanting 12, Mining 103 and Skinning 142 between
+them, both captured as an empty list. It is a stub that answers.
+
+`professionsReturned` is what separates the two: **how many values
+`GetProfessions` handed back, nils counted**. A working client reports its full
+set of slots even when every one is empty; a stub reports nothing. So an empty
+list with a non-zero arity is a real "this character has none", and an empty
+list with an arity of zero is no information at all. Absent arity means the
+capture predates this field, and an empty list from one of those is unusable —
+correctly, since those are the captures the original mistake was made against.
 
 `slot` is the position the client returned it in, recorded as a fact and given
 no meaning. The documented order is prof1, prof2, archaeology, fishing,

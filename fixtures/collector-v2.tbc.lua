@@ -71,6 +71,9 @@ WoWCoachCollectorDB = {
 			["maxXP"] = 7800,
 			["moneyCopper"] = 222222,
 			["name"] = "Testhero",
+			["professions"] = {
+			},
+			["professionsReturned"] = 0,
 			["quests"] = {
 				{
 					["header"] = "Hellfire Peninsula",
@@ -176,7 +179,7 @@ WoWCoachCollectorDB = {
 					["rank"] = 100,
 				},
 			},
-			["skillsComplete"] = false,
+			["skillsComplete"] = true,
 			["spells"] = {
 				{
 					["name"] = "Fireball",

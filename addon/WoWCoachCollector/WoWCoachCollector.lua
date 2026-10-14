@@ -367,8 +367,13 @@ end
 -- character's Cooking. The arity comes from `select("#", ...)` and every slot
 -- up to it is read.
 --
--- Absent means not captured. An empty list means the client was asked and said
--- the character has no professions, which is a different and useful fact.
+-- **An empty list is not an answer.** It was documented as one -- "the client
+-- was asked and said none" -- and live data killed that within a week. On the
+-- Anniversary client (interface 20506) GetProfessions exists, so the capability
+-- check above passes, and it returns nothing at all: two characters carrying
+-- Tailoring, Enchanting, Mining and Skinning between them both came back empty.
+-- It is a stub that answers. So `professionsReturned` is recorded beside the
+-- list, and readers decide from that rather than from the list being empty.
 --------------------------------------------------------------------------------
 
 local function professionSlots(...)
@@ -390,7 +395,7 @@ local function professionSlots(...)
             end
         end
     end
-    return slots
+    return slots, count
 end
 
 local function captureProfessions()
@@ -1091,8 +1096,18 @@ function collector.capture()
         record.skillsComplete = skillsComplete
     end
 
-    local professions = captureProfessions()
-    if professions then record.professions = professions end
+    local professions, professionsReturned = captureProfessions()
+    if professions then
+        record.professions = professions
+        -- How many values GetProfessions handed back, nils counted. The fact
+        -- that tells an empty list apart from a broken one: a working client
+        -- with no professions returns its full set of slots, all nil, where a
+        -- stub returns nothing at all. Without this the two are identical in
+        -- the file, which is how an empty list from the Anniversary client was
+        -- once read as "this character has no professions" when it meant "this
+        -- client's GetProfessions does nothing".
+        record.professionsReturned = professionsReturned
+    end
 
     local spells = captureSpells()
     if spells then record.spells = spells end

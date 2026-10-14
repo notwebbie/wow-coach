@@ -69,15 +69,32 @@
 //! exactly when the client gives it a trade skill window. True, and still a
 //! limitation wearing a rule's clothes.
 //!
-//! `GetProfessions` is the second signal that removes it. It is the game's own
-//! list of which skills are professions: no window needed, no names matched,
-//! and it answers for Skinning and Alchemy alike. A profession it reports with
-//! no recipe cache now produces a plan with the training assessment filled in
-//! and no skill-ups, which is the exact shape of the truth — trainer advice is
-//! arithmetic on rank and level, and craft advice really does need the window.
+//! `GetProfessions` removes it **on the clients that implement it**, and that
+//! qualifier was learned the hard way. It is the game's own list of which
+//! skills are professions: no window needed, no names matched. A profession it
+//! reports with no recipe cache produces a plan with the training assessment
+//! filled in and no skill-ups, which is the exact shape of the truth — trainer
+//! advice is arithmetic on rank and level, and craft advice really does need
+//! the window.
 //!
-//! One honest gap is left: a client offering neither `GetProfessions` nor a
-//! window stays silent, and should.
+//! **On WoW Forever it works.** A live capture returns Alchemy, Herbalism,
+//! First Aid and Cooking for one character, Herbalism among them, so the
+//! gathering gap is closed there.
+//!
+//! **On the Anniversary client it does not.** `GetProfessions` exists on
+//! interface 20506 — so a capability check passes — and returns nothing at
+//! all. Two characters were captured: one with Tailoring 175 and Enchanting
+//! 12, one with Mining 103 and Skinning 142. Both came back with an empty
+//! profession list. So on that client the recipe cache is still the only
+//! evidence, and Skinning at 142/150, eight points from a trainer visit, stays
+//! invisible exactly as it always was. Mining escapes only because Smelting
+//! gives it a window — which is what the live capture shows, a recipe cache
+//! for Mining and none for Skinning.
+//!
+//! The third version of this limitation, then, and narrower again: a
+//! profession appears here when the client gives it a trade skill window, or
+//! when the client's own profession list works. Neither is a property of the
+//! profession; both are facts the capture reports.
 
 use std::collections::{BTreeMap, BTreeSet};
 

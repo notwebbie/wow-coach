@@ -84,7 +84,11 @@ impl SkillEntry {
     /// got silence. `GetProfessions` closes that gap: it is the game's own
     /// list of which skills are professions, it needs no window opened, and it
     /// is as locale-independent as the recipe cache. A client offering neither
-    /// still stays quiet, which is the behaviour this rule exists to protect.
+    /// still stays quiet, which is the behaviour this rule exists to protect —
+    /// and so does one whose `GetProfessions` is a stub, which the Anniversary
+    /// client's turned out to be. There the recipe cache carries the load
+    /// alone, exactly as before, and a windowless gathering skill is still
+    /// invisible.
     pub fn advice_is_safe(&self) -> bool {
         self.has_recipes || self.is_profession
     }

@@ -144,12 +144,11 @@ fn classic() -> RestedModel {
     }
 }
 
-/// WoW Forever: the rate is measured and matches Classic's; the cap does not.
+/// WoW Forever: the rate is measured, and the cap took two readings to find.
 ///
 /// Kept as its own function rather than delegating to [`classic`], even though
-/// the rate is now the same number. The two are equal by measurement, not by
-/// definition — and the cap is now known to *differ*, which is exactly what
-/// folding them together would have hidden.
+/// both numbers now match Classic's. They match by measurement, not by
+/// definition, and the measurement was not straightforward — see the cap note.
 fn forever() -> RestedModel {
     RestedModel {
         rate_per_8h: Some(0.05),
@@ -163,14 +162,20 @@ fn forever() -> RestedModel {
                    last segment is long enough that the startup loss no longer measurably \
                    dilutes it",
         },
-        cap_levels: None,
-        cap_basis: Basis::Unknown {
-            why: "higher than Classic's 1.5 levels, and still not observed. The parked \
-                  character passed 600 — Classic's cap for a 400 XP level — around 6 October \
-                  and went on filling at the same 5%, reading 790 on 9 October, which is 1.98 \
-                  levels, with the accrual still linear to three figures. So the cap is not \
-                  1.5 levels here. What it is remains unmeasured, and the Legacy \
-                  \"Well Rested\" perk is expected to change it again",
+        cap_levels: Some(1.5),
+        cap_basis: Basis::Measured {
+            samples: 1,
+            note: "Classic's 1.5 levels, arrived at by watching the beta correct itself. \
+                   The same parked character read 790 on 9 October — 1.98 levels on a 400 \
+                   XP level, well past the cap — and read exactly 600 on 15 October with \
+                   its XP unchanged at 155/400. Rested is only spent by gaining XP, and \
+                   none was gained, so that is a clamp and not consumption: the beta was \
+                   over-accruing past its own cap and something in between corrected it. \
+                   An earlier version of this module read the 790 and concluded the cap \
+                   was *not* Classic's, which is what one reading of a buggy client buys \
+                   you. Only one reading sits on 600 so far; a second, a day or more \
+                   later and still 600, would settle it. The Legacy \"Well Rested\" perk \
+                   is still expected to change it",
         },
     }
 }

@@ -347,6 +347,10 @@ check(byName.Herbalism and byName.Herbalism.index == 7, "the index passed to Get
 -- skill list cannot say so.
 check(byName.Alchemy ~= nil and byName.Herbalism ~= nil,
     "both primaries present")
+-- The arity is the fact that makes an empty list readable. GetProfessions
+-- returned six values here, four of them real.
+check(snap.professionsReturned == 6,
+    "how many values the client returned is recorded, nils counted")
 
 --------------------------------------------------------------------------------
 -- A future patch moves the interface number

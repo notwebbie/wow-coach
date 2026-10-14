@@ -81,6 +81,7 @@ WoWCoachCollectorDB = {
 					["slot"] = 5,
 				},
 			},
+			["professionsReturned"] = 6,
 			["quests"] = {
 				{
 					["header"] = "Durotar",

@@ -157,10 +157,18 @@ pub struct CharacterRecord {
     /// The skills the game itself files as professions.
     ///
     /// Absent means the client has no `GetProfessions`, or the capture
-    /// predates this field. An empty list means the client was asked and said
-    /// the character has none, which is a different fact and a usable one.
+    /// predates this field. **An empty list means nothing on its own** — see
+    /// [`Self::profession_list_is_usable`], which is the only safe way to read
+    /// it.
     #[serde(deserialize_with = "empty_table_as_list")]
     pub professions: Option<Vec<ProfessionSlot>>,
+    /// How many values `GetProfessions` returned, nils included.
+    ///
+    /// The fact that separates "asked, and this character has none" from "this
+    /// client's `GetProfessions` is a stub". A working client returns its full
+    /// slot list even when every slot is empty; a stub returns nothing.
+    /// Absent on captures predating this field.
+    pub professions_returned: Option<u8>,
     pub talents: Option<Talents>,
     #[serde(deserialize_with = "empty_table_as_list")]
     pub quests: Option<Vec<Quest>>,
@@ -203,6 +211,30 @@ pub struct ProfessionSlot {
     pub max_rank: Option<u16>,
     /// The locale-independent identity, where the client gives one.
     pub skill_line: Option<u32>,
+}
+
+impl CharacterRecord {
+    /// Whether the profession list may be treated as the client's answer.
+    ///
+    /// A non-empty list always may. An **empty** one may only when the client
+    /// said how many slots it looked at — because an empty list and a stub
+    /// that returns nothing are the same bytes otherwise, and this project
+    /// learned the difference the expensive way. The Anniversary client
+    /// (interface 20506) has a `GetProfessions` that exists and returns
+    /// nothing; two characters carrying Tailoring, Enchanting, Mining and
+    /// Skinning between them both captured as empty, and an earlier version of
+    /// this file called that "the character has no professions".
+    ///
+    /// Captures predating `professionsReturned` have no arity, so an empty
+    /// list from one is unusable — correctly, since those are exactly the
+    /// captures the mistake was made against.
+    pub fn profession_list_is_usable(&self) -> bool {
+        match &self.professions {
+            None => false,
+            Some(list) if !list.is_empty() => true,
+            Some(_) => self.professions_returned.is_some_and(|n| n > 0),
+        }
+    }
 }
 
 impl ProfessionSlot {

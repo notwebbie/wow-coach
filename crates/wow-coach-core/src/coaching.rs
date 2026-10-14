@@ -11,9 +11,12 @@
 //! which numbers produced it is indistinguishable from a guess, and the reader
 //! has no way to tell when it is wrong.
 //!
-//! Where the rested model is not established — Forever, where the Legacy
-//! "Well Rested" perk changes both the cap and the fill rate and neither is
-//! readable — this says so rather than ranking on a number it invented.
+//! Where the rested model is not established, this says so rather than
+//! ranking on a number it invented. Forever used to sit in that category and
+//! no longer does: both its rate and its cap have now been measured. What is
+//! still unreadable there is the Legacy "Well Rested" perk, which changes
+//! both — so Forever characters are ranked on the no-perk baseline, and the
+//! ranking says that out loud rather than quietly assuming it.
 
 use crate::collector::CharacterRecord;
 use crate::roster::{Role, RosterEntry};
@@ -307,6 +310,21 @@ pub fn advise(entries: &[RosterEntry<'_>], roster_is_complete: bool) -> Advice {
     {
         advice.caveats.push(
             "Some characters could not be ranked on rest, so they are listed without a position."
+                .to_string(),
+        );
+    }
+    // Measured on a character with no Legacy points, because that is the
+    // character that was parked for 315 hours. A player who has spent points
+    // on Well Rested has a different cap and a different rate, and nothing in
+    // the capture says which. Ranking them on the baseline is better than
+    // refusing — it is right for everyone who has not bought the perk — but it
+    // is an assumption and gets said.
+    if entries
+        .iter()
+        .any(|entry| entry.record.game_flavor.as_deref() == Some("forever"))
+    {
+        advice.caveats.push(
+            "Rest on Forever is ranked against the no-perk baseline. The Legacy \"Well Rested\" perk changes the cap and the fill rate, and the client does not report whether it is bought."
                 .to_string(),
         );
     }

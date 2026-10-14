@@ -622,6 +622,27 @@ GetXPExhaustion = saved.GetXPExhaustion
 
 --------------------------------------------------------------------------------
 
+--------------------------------------------------------------------------------
+-- A GetProfessions that exists and answers nothing
+--
+-- The Anniversary client (interface 20506) has this function and it returns no
+-- values at all. Two characters carrying Tailoring, Enchanting, Mining and
+-- Skinning between them both captured as an empty list, and the schema at the
+-- time said an empty list meant "this character has no professions". It does
+-- not. The arity is what tells them apart, so it is what gets asserted.
+--------------------------------------------------------------------------------
+
+function GetProfessions() return end
+function GetProfessionInfo(index) return nil end
+
+frame:Fire("PLAYER_ENTERING_WORLD")
+frame:Tick(10)
+local stub = record()
+check(stub.professions ~= nil and #stub.professions == 0,
+    "a stub returns an empty list, not nil -- the capability check passed")
+check(stub.professionsReturned == 0,
+    "and the arity says it answered with nothing, which is how a reader knows")
+
 if failures > 0 then
     io.stderr:write(string.format("%d assertion(s) failed\n", failures))
     os.exit(1)
