@@ -60,6 +60,14 @@ desktop, that is a bug in the build, not a difference in behaviour.
 - `apps/desktop` — a Tauri 2 application. Discovers installations automatically,
   watches SavedVariables for changes, and keeps history in local SQLite.
 
+There is also `apps/cli`, and it is **not** a third frontend. It was built in
+Phase 2 so the parser had something to render it, and it grew into the largest
+thing in `apps/` while `apps/web` stayed a README — which is how it became the
+de facto interface without anyone deciding it should be. It is a developer
+tool. No workflow aimed at a player may require it. See
+[`INTERFACE.md`](INTERFACE.md) for the full account, and
+[`WEB-CLIENT-V1.md`](WEB-CLIENT-V1.md) for what the web client ships first.
+
 ### 4. Lua is parsed, never evaluated
 
 The core never executes SavedVariables content. Because this project owns both
@@ -101,6 +109,7 @@ explicit user action.
 ```text
 addon/WoWCoachCollector/   the in-game collector — the data contract
 crates/wow-coach-core/     parser, models, coaching rules (native + wasm)
+apps/cli/                  developer tool, not the product — see INTERFACE.md
 apps/web/                  browser client
 apps/desktop/              Tauri 2 desktop client
 reference/swift-v1.4.2/    archived macOS prototype, kept as specification
