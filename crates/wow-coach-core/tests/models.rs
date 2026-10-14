@@ -169,7 +169,11 @@ fn history_entry_rejects_mismatched_identity() {
         "Example Realm",
         "Examplemage",
     );
-    let snapshot = CharacterSnapshot::minimal(second, Utc::now(), 18);
+    let snapshot = CharacterSnapshot::minimal(
+        second,
+        Utc.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap(),
+        18,
+    );
 
     assert!(HistoryEntry::new(first, snapshot).is_err());
 }

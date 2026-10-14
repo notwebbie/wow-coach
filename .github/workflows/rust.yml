@@ -20,6 +20,29 @@ jobs:
       - run: cargo test -p wow-coach-core -p wow-coach-cli --all-targets
       - run: cargo clippy -p wow-coach-core -p wow-coach-cli --all-targets -- -D warnings
 
+  wasm:
+    name: Core compiles to wasm32
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy
+      - run: cargo build -p wow-coach-core --target wasm32-unknown-unknown
+      - run: cargo clippy -p wow-coach-core --target wasm32-unknown-unknown -- -D warnings
+      # The architecture promises one core compiled twice. Until this job
+      # existed the wasm half had never been built, only asserted.
+      - name: No JS shim in the browser bundle
+        run: |
+          if cargo tree -p wow-coach-core --target wasm32-unknown-unknown -e normal \
+               | grep -E 'wasm-bindgen|js-sys'; then
+            echo "::error::wasm-bindgen reached the core. Something enabled chrono's" \
+                 "clock feature (or added a JS-backed dependency). The core takes the" \
+                 "time as a parameter and must not need a JS shim."
+            exit 1
+          fi
+
   desktop-ui:
     runs-on: ubuntu-latest
     defaults:

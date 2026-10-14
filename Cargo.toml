@@ -9,6 +9,12 @@ repository = "https://github.com/notwebbie/wow-coach"
 rust-version = "1.77"
 
 [workspace.dependencies]
-chrono = { version = "0.4", features = ["serde"] }
+# `default-features = false` is load-bearing, not tidying. The default set
+# includes `clock`, and on wasm32 `clock` pulls in `wasmbind` — which drags
+# wasm-bindgen, js-sys, bumpalo and futures-util into the browser bundle for
+# a capability nothing here uses. Every rule in the core takes the time as a
+# parameter rather than reading the wall clock, which is what makes this
+# safe; a future call to `Utc::now()` will fail to compile, and should.
+chrono = { version = "0.4", default-features = false, features = ["serde", "alloc"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
