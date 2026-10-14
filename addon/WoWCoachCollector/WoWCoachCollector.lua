@@ -427,9 +427,13 @@ local function spellName(spellID)
     return nil
 end
 
--- Rank and column numbers from pixel positions. Forever exposes the vanilla
--- grid only as node coordinates; ranking the distinct values recovers the
--- row and column the talent frame draws, 1-based like GetTalentInfo's.
+-- Row and column numbers from pixel positions. Forever exposes the vanilla
+-- grid only as node coordinates, and the live client does not put a row's
+-- nodes at exactly the same height: on the first real capture, ranking every
+-- distinct value turned seven rows into nine and moved talents a tier down.
+-- So positions are grouped: a gap more than a quarter of the largest gap
+-- between neighbours starts a new row (or column). Rows are evenly spaced, so
+-- the largest gap is at least one row, and placement jitter is far smaller.
 local function ordinals(values)
     local distinct, seen = {}, {}
     for _, value in ipairs(values) do
@@ -439,8 +443,15 @@ local function ordinals(values)
         end
     end
     table.sort(distinct)
-    local index = {}
-    for position, value in ipairs(distinct) do index[value] = position end
+    local largest = 0
+    for i = 2, #distinct do
+        largest = math.max(largest, distinct[i] - distinct[i - 1])
+    end
+    local index, position = {}, 0
+    for i, value in ipairs(distinct) do
+        if i == 1 or distinct[i] - distinct[i - 1] > largest / 4 then position = position + 1 end
+        index[value] = position
+    end
     return index
 end
 
@@ -512,6 +523,10 @@ local function traitNodeTalents(configID, treeID, groups)
             if node.x and node.y then
                 node.talent.tier = tier[node.y]
                 node.talent.column = column[node.x]
+                -- The raw coordinates too: if the grouping is ever wrong,
+                -- the core can redo it without an addon update.
+                node.talent.posX = node.x
+                node.talent.posY = node.y
             end
         end
     end

@@ -129,12 +129,12 @@ end
 -- not one of the three tabs and must be ignored. Node 0 is the API's empty
 -- slot marker.
 local trait_nodes = {
-    [501] = { ID = 501, posX = 1800, posY = 1200, groupIDs = { 13 }, ranksPurchased = 0,
+    [501] = { ID = 501, posX = 1800, posY = 1170, groupIDs = { 13 }, ranksPurchased = 0,
               currentRank = 0, maxRanks = 2, entryIDs = { 601 } },
     [502] = { ID = 502, posX = 2400, posY = 1200, groupIDs = { 13 }, ranksPurchased = 5,
               currentRank = 5, maxRanks = 5, entryIDs = { 602 }, activeEntry = { entryID = 602, rank = 5 },
               visibleEdges = { { targetNode = 504, type = 1, isActive = true } } },
-    [503] = { ID = 503, posX = 1800, posY = 1950, groupIDs = { 13, 77 }, ranksPurchased = 0,
+    [503] = { ID = 503, posX = 1815, posY = 1985, groupIDs = { 13, 77 }, ranksPurchased = 0,
               currentRank = 0, maxRanks = 5, entryIDs = { 603 } },
     [504] = { ID = 504, posX = 3900, posY = 1950, groupIDs = { 13 }, ranksPurchased = 0,
               currentRank = 0, maxRanks = 3, entryIDs = { 604 } },
@@ -288,6 +288,9 @@ check(ft[2] and ft[2].name == "Improved Frostbolt" and ft[2].column == 2 and ft[
     "second column and committed rank")
 check(ft[2] and ft[2].spellID == 16766, "spellID kept as a stable identity")
 check(ft[3] and ft[3].name == "Ice Shards" and ft[3].tier == 2, "second distinct row is tier 2")
+check(ft[1] and ft[1].tier == ft[2].tier, "a node drawn slightly higher is still in its row")
+check(ft[3] and ft[3].column == 1, "a node drawn slightly right is still in its column")
+check(ft[2] and ft[2].posX == 2400 and ft[2].posY == 1200, "raw coordinates kept")
 check(ft[4] and ft[4].name == "Permafrost", "overrideName preferred over the spell name")
 check(ft[4] and ft[4].column == 3, "columns ranked over the whole group, not per row")
 check(ft[4] and ft[4].requires and ft[4].requires.tier == 1 and ft[4].requires.column == 2,

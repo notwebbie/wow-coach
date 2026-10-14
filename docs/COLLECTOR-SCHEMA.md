@@ -218,6 +218,13 @@ the quest state's sign is. `requires` is the talent an arrow points from, and
 it is absent when there is none. `spellID` is a stable, locale-independent
 identity, but only Forever supplies it.
 
+Forever also stores each node's raw `posX` and `posY`. The live client does not
+place a row's nodes at exactly the same height, so positions are grouped rather
+than ranked: a gap larger than a quarter of the largest gap between neighbouring
+values starts a new row or column. The first live capture, which ranked every
+distinct value instead, turned seven rows into nine. The raw coordinates are
+kept so a reader can redo the grouping without an addon update.
+
 ### Quests
 
 ```lua

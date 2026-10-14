@@ -308,6 +308,12 @@ pub struct Talent {
     pub spell_id: Option<u32>,
     /// The talent an arrow points from, which must be maxed first.
     pub requires: Option<TalentPosition>,
+    /// Forever only: the node's raw coordinates in the talent frame, kept so
+    /// the grid can be recomputed if the collector's grouping is ever wrong.
+    #[serde(rename = "posX")]
+    pub pos_x: Option<f64>,
+    #[serde(rename = "posY")]
+    pub pos_y: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
