@@ -87,6 +87,9 @@ architecture it builds toward is recorded in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Phase 4 — Ship the web client
 
+Scope and the decisions behind it: [`WEB-CLIENT-V1.md`](WEB-CLIENT-V1.md).
+Why this, and not the CLI: [`INTERFACE.md`](INTERFACE.md).
+
 - Drop a SavedVariables file onto the page; parsing happens in the browser.
 - Retain the directory handle where the File System Access API allows it, so
   return visits re-read without re-picking.
