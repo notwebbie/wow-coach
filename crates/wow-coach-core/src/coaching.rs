@@ -319,14 +319,36 @@ pub fn advise(entries: &[RosterEntry<'_>], roster_is_complete: bool) -> Advice {
     // the capture says which. Ranking them on the baseline is better than
     // refusing — it is right for everyone who has not bought the perk — but it
     // is an assumption and gets said.
-    if entries
+    let forever: Vec<&RosterEntry<'_>> = entries
         .iter()
-        .any(|entry| entry.record.game_flavor.as_deref() == Some("forever"))
-    {
-        advice.caveats.push(
-            "Rest on Forever is ranked against the no-perk baseline. The Legacy \"Well Rested\" perk changes the cap and the fill rate, and the client does not report whether it is bought."
-                .to_string(),
-        );
+        .filter(|entry| entry.record.game_flavor.as_deref() == Some("forever"))
+        .collect();
+    if !forever.is_empty() {
+        // Three states, and only one of them is a warning. The Legacy trees
+        // are captured now, so "has this character bought the perk" is a
+        // question the data can answer rather than a blanket disclaimer on
+        // every Forever character.
+        let bought: Vec<&str> = forever
+            .iter()
+            .filter(|entry| entry.record.rested_baseline_applies() == Some(false))
+            .map(|entry| entry.name())
+            .collect();
+        let unknown = forever
+            .iter()
+            .any(|entry| entry.record.rested_baseline_applies().is_none());
+        if !bought.is_empty() {
+            advice.caveats.push(format!(
+                "Rest is measured against a no-perk baseline, and {} {} spent Legacy points — the \"Well Rested\" perk changes the cap and the fill rate, so their rested figures are approximate.",
+                bought.join(", "),
+                if bought.len() == 1 { "has" } else { "have" }
+            ));
+        }
+        if unknown {
+            advice.caveats.push(
+                "Rest on Forever is ranked against the no-perk baseline. The Legacy trees were not captured for every character, so whether \"Well Rested\" is bought is unknown."
+                    .to_string(),
+            );
+        }
     }
     if entries.iter().all(|entry| entry.role != Role::Active) && !entries.is_empty() {
         // Two situations, and only one is a problem the player can fix in ten

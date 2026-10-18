@@ -69,6 +69,7 @@ the code or into a planning document without being checked first.
 | `professions::TIERS` | Apprentice/Journeyman/Expert/Artisan/Master: cap, character level, skill required | [warcraft.wiki.gg — Classic proficiency](https://warcraft.wiki.gg/wiki/Classic_proficiency) and [Icy Veins — TBC Mining](https://www.icy-veins.com/tbc-classic/mining-profession-and-leveling-1-375-guide). Master is TBC-only; Forever and Classic Era stop at Artisan 300, per [Icy Veins — Forever professions](https://www.icy-veins.com/wow-forever/professions-overview) and [wow-professions — Forever](https://www.wow-professions.com/forever). Cross-checked against the live roster, where ranks sit exactly on 75/150/225. |
 | `travel::TRAVEL_SPELLS` | 17 teleport and portal spell ids to destination, side and kind | Each id checked individually on its own Wowhead TBC spell page. A wrong id here does not fail loudly, it reports the wrong destination. |
 | `rested::forever()` | Measured rested rate on WoW Forever, and an explicitly unknown cap | This project's own probe, 26 hours parked. The module carries the sample count and the unresolved alternative. |
+| `collector::WELL_RESTED_SPELL` / `WELL_RESTED_NODE` | The Legacy perk that changes rested accrual | Spell `1225478`, node `110301` in the Adventure tree (1188), read from a live WoW Forever capture on 19 October 2026 where the client's own spell name resolves to "Well Rested", 5 ranks. Matched on the spell id, never the name — the same capture carries six nodes the client itself names "Unknown", and the names are English. |
 | `rested::classic()` | 5% per 8 hours, cap 1.5 levels | Long-settled Classic behaviour, corroborated by a capped character on the live roster reading exactly 31,200 at level 20. |
 | `economy::OUTLIER_RATIO` | 100x, before a last-seen price is called suspect | Calibrated against this player's own Auctionator data, not from a guide: scan-completeness artifacts reach ~30x and a genuine joke listing reached ~5,600x. The reasoning is in the code. |
 | `quests::TOO_HIGH_BY` / `TRIVIAL_BY` / `TIGHT_WITHIN` | Quest-log routing thresholds | Judgement calls, not game facts. Labelled as such in the module. |
@@ -159,6 +160,16 @@ capture shows Herbalism holding Seed Hybridizer, Greenhouse and Incense Candle,
 and Alchemy carrying 197 recipes at skill 23 against 8 on Burning Crusade. The
 tool reads them as recipes like any other, which is correct as far as it goes
 and says nothing about campsites, buffs or what a structure does.
+
+**A constant can be too broad as well as wrong.** The first version of the
+rested-baseline check summed Legacy ranks across all three trees, on the
+reasoning that any perk might matter. The first live capture disproved it
+inside a minute: the character had one point in *Working Overtime*, a
+professions perk, and would have been told his rested figures were approximate
+when they were exact. The fix was to name the one perk that moves those
+numbers. A constant that covers more than it should produces wrong answers just
+as surely as one that covers too little, and it is harder to notice, because
+the output still looks cautious.
 
 **It will not present unsourced recall as fact.** A planning document that
 mixes checked and unchecked claims without marking which is which is worse than

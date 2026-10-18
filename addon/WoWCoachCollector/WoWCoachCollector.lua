@@ -582,6 +582,105 @@ local function tabTalents(tab)
     return list
 end
 
+--------------------------------------------------------------------------------
+-- Legacy
+--
+-- WoW Forever's account-wide perk trees. The one that matters to the coaching
+-- engine is "Well Rested" in the Adventure tree, because it changes both the
+-- rested fill rate and the rested cap -- the two numbers the play-next ranking
+-- is built on. Both were measured on a character with no Legacy points, so a
+-- player who has bought the perk is being ranked against a baseline that does
+-- not apply to them, and until now nothing in the capture said so.
+--
+-- **Ranks purchased is the fact that settles it, and it needs no names.** If
+-- every node in the tree reads zero, nothing is bought and the baseline is
+-- exactly right. Identifying which node is Well Rested would be nice and is
+-- not required for that, so a nil name costs nothing here.
+--
+-- Names are captured anyway, through the same spell fallback the talent reader
+-- uses. The probe that first explored these trees read only
+-- `definition.overrideName` -- which is set only when a trait deliberately
+-- overrides its spell's name -- and came back with nil for all nine nodes,
+-- making the tree look less readable than it is.
+--
+-- An absent `configID` means the client would not hand one over, which is a
+-- different thing from a tree with nothing bought in it. It is recorded as
+-- absent rather than as an empty list, for the same reason professions are.
+--------------------------------------------------------------------------------
+
+local LEGACY_TREES = {
+    { key = "professions", treeID = 1187 },
+    { key = "adventure", treeID = 1188 },
+    { key = "resourcefulness", treeID = 1189 },
+}
+
+local legacyNodes
+
+local function legacyTree(entry)
+    local tree = { tree = entry.key, treeID = entry.treeID }
+    local configID = C_Traits.GetConfigIDByTreeID(entry.treeID)
+    if not configID then return tree end
+    tree.configID = configID
+
+    if has("C_Traits.GetTreeCurrencyInfo") then
+        local info = C_Traits.GetTreeCurrencyInfo(configID, entry.treeID, true)
+        local first = info and info[1]
+        if first then
+            tree.available = first.quantity
+            tree.cap = first.maxQuantity
+            tree.spent = first.spentInTree
+        end
+    end
+
+    -- Per-node detail is the part most likely to move under us, and the tree
+    -- totals above are useful without it. Same bargain the talent reader
+    -- strikes: if the node API throws, keep what was already read and record
+    -- no nodes at all rather than a partial list.
+    local ok, nodes = pcall(legacyNodes, configID, entry.treeID)
+    if ok then tree.nodes = nodes end
+    return tree
+end
+
+function legacyNodes(configID, treeID)
+    local nodes = {}
+    for _, nodeID in ipairs(C_Traits.GetTreeNodes(treeID) or {}) do
+        local info = C_Traits.GetNodeInfo(configID, nodeID)
+        if info then
+            local name, spellID
+            local entryID = (info.activeEntry and info.activeEntry.entryID)
+                or (info.entryIDs and info.entryIDs[1])
+            if entryID and has("C_Traits.GetEntryInfo") and has("C_Traits.GetDefinitionInfo") then
+                local traitEntry = C_Traits.GetEntryInfo(configID, entryID)
+                local definition = traitEntry and traitEntry.definitionID
+                    and C_Traits.GetDefinitionInfo(traitEntry.definitionID)
+                if definition then
+                    spellID = definition.spellID
+                    name = definition.overrideName
+                    if name == "" then name = nil end
+                end
+            end
+            nodes[#nodes + 1] = {
+                nodeID = nodeID,
+                name = name or spellName(spellID),
+                spellID = spellID,
+                rank = info.ranksPurchased or 0,
+                maxRank = info.maxRanks,
+            }
+        end
+    end
+    return nodes
+end
+
+local function captureLegacy()
+    if not has("C_Traits.GetConfigIDByTreeID") then return nil end
+    if not has("C_Traits.GetTreeNodes") or not has("C_Traits.GetNodeInfo") then return nil end
+    local trees = {}
+    for _, entry in ipairs(LEGACY_TREES) do
+        trees[#trees + 1] = legacyTree(entry)
+    end
+    return trees
+end
+
 local function captureTalentsFromTraits()
     if not has("C_SpecializationInfo.GetCombatConfigIDForSpecGroup") then return nil end
     if not has("C_Traits.GetGroupDisplayInfoByTreeID") or not has("C_Traits.GetGroupCurrencyInfo") then
@@ -1114,6 +1213,9 @@ function collector.capture()
 
     local talents = captureTalents()
     if talents then record.talents = talents end
+
+    local legacy = captureLegacy()
+    if legacy then record.legacy = legacy end
 
     local quests, questsComplete = captureQuests()
     if quests then

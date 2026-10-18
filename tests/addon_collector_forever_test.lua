@@ -164,6 +164,62 @@ local spell_names = { [11189] = "Frost Warding", [16766] = "Improved Frostbolt",
 C_Spell = C_Spell or {}
 function C_Spell.GetSpellName(spellID) return spell_names[spellID] end
 
+-- Legacy trees. Three states, because all three happen:
+--   1187 professions      -- no configID: the client will not hand one over.
+--                            Absent, which is NOT the same as nothing bought.
+--   1188 adventure        -- readable, one node bought, one node whose name
+--                            exists only as a spell name. The probe read
+--                            `overrideName` alone and got nil for every node,
+--                            so a reader that regresses to that fails here.
+--   1189 resourcefulness  -- readable, nothing bought.
+local legacy_nodes = {
+    [110296] = { ID = 110296, ranksPurchased = 0, maxRanks = 5, entryIDs = { 801 } },
+    [110301] = { ID = 110301, ranksPurchased = 2, maxRanks = 5, entryIDs = { 802 },
+                 activeEntry = { entryID = 802, rank = 2 } },
+    [110300] = { ID = 110300, ranksPurchased = 0, maxRanks = 1, entryIDs = { 803 } },
+    [119001] = { ID = 119001, ranksPurchased = 0, maxRanks = 3, entryIDs = { 804 } },
+}
+local legacy_tree_nodes = {
+    [1188] = { 110296, 110301, 110300 },
+    [1189] = { 119001 },
+}
+function C_Traits.GetConfigIDByTreeID(treeID)
+    if treeID == 1188 then return 7001 end
+    if treeID == 1189 then return 7002 end
+    return nil  -- 1187 refuses
+end
+do
+    local baseTreeNodes = C_Traits.GetTreeNodes
+    function C_Traits.GetTreeNodes(treeID)
+        if legacy_tree_nodes[treeID] then return legacy_tree_nodes[treeID] end
+        return baseTreeNodes(treeID)
+    end
+    local baseNodeInfo = C_Traits.GetNodeInfo
+    function C_Traits.GetNodeInfo(configID, nodeID)
+        if legacy_nodes[nodeID] then return legacy_nodes[nodeID] end
+        return baseNodeInfo(configID, nodeID)
+    end
+    local baseDefinition = C_Traits.GetDefinitionInfo
+    function C_Traits.GetDefinitionInfo(definitionID)
+        -- 901 carries an overrideName; the rest resolve only through the spell
+        -- name, which is the case the probe got wrong.
+        if definitionID == 901 then return { spellID = 450001, overrideName = "Seasoned Traveller" } end
+        if definitionID == 902 then return { spellID = 1225478 } end
+        if definitionID == 903 then return { spellID = 450003 } end
+        if definitionID == 904 then return { spellID = 450004 } end
+        return baseDefinition(definitionID)
+    end
+    local baseCurrency = C_Traits.GetTreeCurrencyInfo
+    function C_Traits.GetTreeCurrencyInfo(configID, treeID, exclude)
+        if treeID == 1188 then return { { quantity = 1, maxQuantity = 9, spentInTree = 2 } } end
+        if treeID == 1189 then return { { quantity = 0, maxQuantity = 4, spentInTree = 0 } } end
+        return baseCurrency(configID, treeID, exclude)
+    end
+end
+spell_names[1225478] = "Well Rested"
+spell_names[450003] = "Pathfinder"
+spell_names[450004] = "Scavenger"
+
 -- Rulesets. Normal is the absence of all three, not a value of its own.
 Enum = { GameRule = { HardcoreRuleset = 10, PvPRuleset = 213, RPRuleset = 214,
                       SelfFoundAllowed = 22 } }
@@ -319,6 +375,43 @@ check(linen and linen.count == 32, "stacks summed across bags")
 
 -- No pet on a mage.
 check(snap.pet == nil, "no pet should mean no pet record")
+
+--------------------------------------------------------------------------------
+-- Legacy
+--
+-- The point of this capture is one question: has this character bought
+-- anything that changes the rested model? "Every node reads zero" answers it
+-- without knowing which node is which.
+--------------------------------------------------------------------------------
+
+local legacy = {}
+for _, tree in ipairs(snap.legacy or {}) do legacy[tree.tree] = tree end
+
+check(snap.legacy ~= nil and #snap.legacy == 3, "all three Legacy trees are reported")
+check(legacy.professions ~= nil and legacy.professions.configID == nil,
+    "a tree the client refuses a configID for is reported as present but unreadable")
+check(legacy.professions and legacy.professions.nodes == nil,
+    "and carries no node list, because absent is not the same as nothing bought")
+
+check(legacy.adventure and legacy.adventure.configID == 7001, "the readable tree carries its configID")
+check(legacy.adventure and legacy.adventure.spent == 2, "and what has been spent in it")
+check(legacy.adventure and #legacy.adventure.nodes == 3, "every node in the tree")
+
+local byNode = {}
+for _, node in ipairs(legacy.adventure and legacy.adventure.nodes or {}) do byNode[node.nodeID] = node end
+check(byNode[110301] and byNode[110301].rank == 2, "ranks purchased is the fact that matters")
+check(byNode[110296] and byNode[110296].rank == 0, "and an untouched node reads zero, not nil")
+
+-- The probe read `overrideName` only and got nil for all nine live nodes.
+check(byNode[110301] and byNode[110301].name == "Well Rested",
+    "a node with no overrideName resolves through its spell name")
+check(byNode[110301] and byNode[110301].spellID == 1225478,
+    "and carries the spell id, which is what the core matches on")
+check(byNode[110296] and byNode[110296].name == "Seasoned Traveller",
+    "and a node that does override its spell name keeps the override")
+
+check(legacy.resourcefulness and legacy.resourcefulness.spent == 0,
+    "a readable tree with nothing bought reports zero spent, which is an answer")
 
 --------------------------------------------------------------------------------
 -- Professions

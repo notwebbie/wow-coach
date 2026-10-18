@@ -401,3 +401,65 @@ fn only_actual_trade_skills_raise_the_training_friction() {
     assert!(!said.iter().any(|s| s.contains("Affliction")), "{said:?}");
     assert!(!said.iter().any(|s| s.contains("Cloth")), "{said:?}");
 }
+
+#[test]
+fn only_well_rested_moves_the_rested_caveat() {
+    // The live capture that caught the first version of this. Gravehexx had a
+    // point in Working Overtime -- a *professions* perk, nothing to do with
+    // rested XP -- and summing every tree would have told him his rested
+    // figures were approximate when they were exact.
+    use wow_coach_core::collector::{LegacyNode, LegacyTree, WELL_RESTED_SPELL};
+
+    fn node(spell: u32, rank: u32) -> LegacyNode {
+        LegacyNode {
+            node_id: Some(1),
+            spell_id: Some(spell),
+            rank: Some(rank),
+            ..Default::default()
+        }
+    }
+    fn with_nodes(name: &str, nodes: Vec<LegacyNode>) -> CharacterRecord {
+        let mut record = character(name, 24, 24_600, 16_400);
+        record.game_flavor = Some("forever".to_string());
+        record.legacy = Some(vec![LegacyTree {
+            nodes: Some(nodes),
+            ..Default::default()
+        }]);
+        record
+    }
+    fn caveats(record: CharacterRecord) -> Vec<String> {
+        let characters = roster_of(vec![record]);
+        let entries = roster::roster(&characters, &levelling(&characters));
+        coaching::advise(&entries, true).caveats
+    }
+
+    const WORKING_OVERTIME: u32 = 1_225_451;
+
+    // Points spent, but not on Well Rested. The rested numbers are exact.
+    let other_perk = caveats(with_nodes(
+        "Busy",
+        vec![node(WORKING_OVERTIME, 1), node(WELL_RESTED_SPELL, 0)],
+    ));
+    assert!(
+        !other_perk.iter().any(|c| c.contains("Well Rested")),
+        "a profession perk must not cast doubt on rested figures: {other_perk:?}"
+    );
+
+    // The perk itself. Name the character, because the approximation is theirs.
+    let perked = caveats(with_nodes("Rested", vec![node(WELL_RESTED_SPELL, 3)]));
+    assert!(
+        perked
+            .iter()
+            .any(|c| c.contains("Rested") && c.contains("Well Rested")),
+        "the perk that matters must be called out: {perked:?}"
+    );
+
+    // Trees never captured: unknown, which is not the same as clean.
+    let mut bare = character("Unknown", 24, 24_600, 16_400);
+    bare.game_flavor = Some("forever".to_string());
+    let unknown = caveats(bare);
+    assert!(
+        unknown.iter().any(|c| c.contains("not captured")),
+        "an uncaptured tree is an unknown: {unknown:?}"
+    );
+}

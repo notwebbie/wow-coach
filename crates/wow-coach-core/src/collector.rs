@@ -170,6 +170,9 @@ pub struct CharacterRecord {
     /// Absent on captures predating this field.
     pub professions_returned: Option<u8>,
     pub talents: Option<Talents>,
+    /// WoW Forever's account-wide perk trees. Absent on every other client.
+    #[serde(deserialize_with = "empty_table_as_list")]
+    pub legacy: Option<Vec<LegacyTree>>,
     #[serde(deserialize_with = "empty_table_as_list")]
     pub quests: Option<Vec<Quest>>,
     pub quests_complete: Option<bool>,
@@ -181,6 +184,75 @@ pub struct CharacterRecord {
     pub ruleset: Option<Ruleset>,
     pub pet: Option<Pet>,
     pub recipes: Option<BTreeMap<String, ProfessionRecipes>>,
+}
+
+/// One of WoW Forever's account-wide Legacy perk trees.
+///
+/// Captured for one question: has this character bought anything that changes
+/// the rested model? The "Well Rested" perk alters both the fill rate and the
+/// cap, and both were measured on a character with none — so a player who has
+/// it is otherwise ranked against a baseline that does not apply to them.
+///
+/// Answering that needs no names. If every node reads zero, nothing is bought.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LegacyTree {
+    /// `professions`, `adventure` or `resourcefulness`.
+    pub tree: Option<String>,
+    #[serde(rename = "treeID")]
+    pub tree_id: Option<u32>,
+    /// Absent when the client would not hand one over, which is not the same
+    /// as a tree with nothing bought in it.
+    #[serde(rename = "configID")]
+    pub config_id: Option<i64>,
+    pub available: Option<u32>,
+    pub cap: Option<u32>,
+    pub spent: Option<u32>,
+    /// Absent when the tree was unreadable *or* the node API failed. Empty is
+    /// a real answer: a tree with no nodes in it.
+    #[serde(deserialize_with = "empty_table_as_list")]
+    pub nodes: Option<Vec<LegacyNode>>,
+}
+
+impl LegacyTree {
+    /// Points committed in this tree, counting nodes rather than trusting the
+    /// currency total — they should agree, and the nodes are the primary fact.
+    pub fn ranks_purchased(&self) -> Option<u32> {
+        let nodes = self.nodes.as_ref()?;
+        Some(nodes.iter().filter_map(|node| node.rank).sum())
+    }
+}
+
+/// The Legacy perk that changes rested accrual, by the spell behind it.
+///
+/// Identified from a live capture on WoW Forever, 19 October 2026: node
+/// `110301` in the Adventure tree (1188) resolves through the client's own
+/// spell name to "Well Rested", 5 ranks. The spell id is matched rather than
+/// the node id because a node is a position in a tree and a tree can be
+/// rearranged, where the spell is the perk itself. Both are recorded in
+/// `docs/SOURCES.md`.
+///
+/// Matched on the id and never on the name: "Well Rested" is English, and the
+/// same capture carries six nodes the client itself names "Unknown".
+pub const WELL_RESTED_SPELL: u32 = 1_225_478;
+
+/// The node `WELL_RESTED_SPELL` sat on in that capture. Kept as a fallback for
+/// a client that reports no spell id, and as the thing to check first if the
+/// spell id ever stops matching.
+pub const WELL_RESTED_NODE: u32 = 110_301;
+
+/// One node in a Legacy tree.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LegacyNode {
+    #[serde(rename = "nodeID")]
+    pub node_id: Option<u32>,
+    /// The client's own words, for a reader. Never matched on.
+    pub name: Option<String>,
+    #[serde(rename = "spellID")]
+    pub spell_id: Option<u32>,
+    pub rank: Option<u32>,
+    pub max_rank: Option<u32>,
 }
 
 /// One profession, as the game's own profession list reports it.
@@ -228,6 +300,42 @@ impl CharacterRecord {
     /// Captures predating `professionsReturned` have no arity, so an empty
     /// list from one is unusable — correctly, since those are exactly the
     /// captures the mistake was made against.
+    /// Ranks bought in the Legacy perk that changes rested accrual.
+    ///
+    /// `None` when the trees were not captured or not readable — every client
+    /// but Forever, and any capture predating the field.
+    pub fn well_rested_rank(&self) -> Option<u32> {
+        let trees = self.legacy.as_ref()?;
+        let mut found = None;
+        for node in trees
+            .iter()
+            .filter_map(|tree| tree.nodes.as_ref())
+            .flatten()
+        {
+            let matches = node.spell_id == Some(WELL_RESTED_SPELL)
+                || (node.spell_id.is_none() && node.node_id == Some(WELL_RESTED_NODE));
+            if matches {
+                found = Some(node.rank.unwrap_or(0));
+            }
+        }
+        found
+    }
+
+    /// Whether the no-perk rested baseline applies to this character.
+    ///
+    /// **Only Well Rested counts.** The first version of this summed ranks
+    /// across all three Legacy trees, and the first live capture showed why
+    /// that is wrong: the character had one point in *Working Overtime*, a
+    /// professions perk with nothing to do with rested XP, and would have been
+    /// warned that his rested figures were approximate when they were exact.
+    ///
+    /// `None` when the trees were not captured, or when they were captured and
+    /// the perk was not among them — an absent perk in a readable tree is a
+    /// changed tree, not a zero.
+    pub fn rested_baseline_applies(&self) -> Option<bool> {
+        Some(self.well_rested_rank()? == 0)
+    }
+
     pub fn profession_list_is_usable(&self) -> bool {
         match &self.professions {
             None => false,

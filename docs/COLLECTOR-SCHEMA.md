@@ -189,6 +189,37 @@ The returns are sparse by design. A reader that walks them with `ipairs` stops
 at the first `nil` and silently drops everything after it — the exact bug that
 hid a character's Cooking during the probe that found this API.
 
+### Legacy
+
+```lua
+["legacy"] = {
+    { ["tree"] = "adventure", ["treeID"] = 1188, ["configID"] = 7001,
+      ["available"] = 1, ["cap"] = 9, ["spent"] = 2,
+      ["nodes"] = { { ["nodeID"] = 110298, ["name"] = "Well Rested",
+                      ["spellID"] = 450002, ["rank"] = 2, ["maxRank"] = 5 }, ... } },
+    { ["tree"] = "professions", ["treeID"] = 1187 },
+},
+```
+
+WoW Forever's account-wide perk trees. Absent on every other client.
+
+Captured for one question: **has this character bought anything that changes
+the rested model?** The "Well Rested" perk alters both the rested fill rate and
+the rested cap, and both were measured on a character with no Legacy points, so
+a player who has the perk is otherwise ranked against a baseline that does not
+apply to them.
+
+Answering that needs no names — if every node reads `rank = 0`, nothing is
+bought. Names are captured anyway, and are the client's words, never matched on.
+
+A tree with **no `configID`** is one the client would not hand one over for, and
+carries no `nodes` at all. That is not the same as a tree with nothing bought in
+it, and the two must not be shown alike. `nodes` is also absent when the
+per-node API failed, the tree totals above it being worth keeping on their own.
+
+`rank` is `ranksPurchased` — committed points. It is deliberately not
+`currentRank`, which also counts points placed in the UI but not yet applied.
+
 ### Talents
 
 ```lua
