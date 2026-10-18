@@ -1,5 +1,10 @@
 [workspace]
-members = ["crates/wow-coach-core", "apps/cli", "apps/desktop/src-tauri"]
+members = [
+    "crates/wow-coach-core",
+    "crates/wow-coach-wasm",
+    "apps/cli",
+    "apps/desktop/src-tauri",
+]
 resolver = "2"
 
 [workspace.package]

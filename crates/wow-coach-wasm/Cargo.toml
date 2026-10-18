@@ -1,0 +1,21 @@
+[package]
+name = "wow-coach-wasm"
+version = "0.1.0"
+description = "Browser bindings for the WoW Coach core"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wow-coach-core = { path = "../wow-coach-core" }
+serde.workspace = true
+serde_json.workspace = true
+# The only crate in this workspace allowed to depend on wasm-bindgen. The core
+# must stay free of it — `docs/ARCHITECTURE.md` and the `wasm` CI job both say
+# so, and the job fails if it reappears there.
+wasm-bindgen = "0.2"

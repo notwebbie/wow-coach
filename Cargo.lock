@@ -5404,6 +5404,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "wow-coach-wasm"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "wow-coach-core",
+]
+
+[[package]]
 name = "writeable"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

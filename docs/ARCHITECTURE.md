@@ -109,6 +109,7 @@ explicit user action.
 ```text
 addon/WoWCoachCollector/   the in-game collector — the data contract
 crates/wow-coach-core/     parser, models, coaching rules (native + wasm)
+crates/wow-coach-wasm/     browser bindings — the only crate allowed wasm-bindgen
 apps/cli/                  developer tool, not the product — see INTERFACE.md
 apps/web/                  browser client
 apps/desktop/              Tauri 2 desktop client
