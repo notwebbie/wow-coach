@@ -36,7 +36,10 @@ fn the_forever_cap_is_classics_after_all_and_says_how_it_got_there() {
 
     match model.cap_basis {
         Basis::Measured { samples, note } => {
-            assert_eq!(samples, 1, "exactly one reading sits on the cap so far");
+            assert_eq!(
+                samples, 2,
+                "two readings now sit on the cap, 44.8 hours apart"
+            );
             assert!(
                 note.contains("790"),
                 "the contradicted reading belongs in the record, not only in history: {note}"
@@ -44,6 +47,11 @@ fn the_forever_cap_is_classics_after_all_and_says_how_it_got_there() {
             assert!(
                 note.contains("clamp"),
                 "and the reason it was contradicted: {note}"
+            );
+            assert!(
+                note.contains("712"),
+                "the number continued accrual would have produced is what makes the \
+                 second reading evidence rather than a repeat: {note}"
             );
         }
         other => panic!("expected a measured cap carrying its history, got {other:?}"),

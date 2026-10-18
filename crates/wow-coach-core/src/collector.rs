@@ -445,6 +445,14 @@ pub struct ItemStack {
 
 /// Forever replaces realms with rulesets. Normal is the absence of all three,
 /// not a value of its own, so `false` here is meaningful data.
+///
+/// **Never observed true.** Every capture taken during the beta — four
+/// characters, many logins — reports all four flags false, because the beta ran
+/// Normal only: PvP realms were not available, Roleplay arrives at launch and
+/// Hardcore later still. So [`Self::is_normal`] returning the right answer for
+/// a non-Normal character is an assumption no data has tested, and the beta
+/// window closed without being able to test it. Recorded here rather than left
+/// on a list of things to try, because it was not doable rather than not done.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Ruleset {

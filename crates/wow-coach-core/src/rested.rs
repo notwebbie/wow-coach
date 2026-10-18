@@ -164,18 +164,21 @@ fn forever() -> RestedModel {
         },
         cap_levels: Some(1.5),
         cap_basis: Basis::Measured {
-            samples: 1,
+            samples: 2,
             note: "Classic's 1.5 levels, arrived at by watching the beta correct itself. \
                    The same parked character read 790 on 9 October — 1.98 levels on a 400 \
-                   XP level, well past the cap — and read exactly 600 on 15 October with \
-                   its XP unchanged at 155/400. Rested is only spent by gaining XP, and \
-                   none was gained, so that is a clamp and not consumption: the beta was \
-                   over-accruing past its own cap and something in between corrected it. \
-                   An earlier version of this module read the 790 and concluded the cap \
-                   was *not* Classic's, which is what one reading of a buggy client buys \
-                   you. Only one reading sits on 600 so far; a second, a day or more \
-                   later and still 600, would settle it. The Legacy \"Well Rested\" perk \
-                   is still expected to change it",
+                   XP level, well past the cap — then exactly 600 on 15 October with its \
+                   XP unchanged at 155/400, and 600 again 44.8 hours after that, still \
+                   unchanged, still resting. Rested is only spent by gaining XP and none \
+                   was gained, so the drop was a clamp and not consumption: the beta was \
+                   over-accruing past its own cap and was corrected. Continued accrual \
+                   would have read 712 at the second check; it read 600. An earlier \
+                   version of this module took the 790 and concluded the cap was *not* \
+                   Classic's, which is what one reading of a buggy client buys you. \
+                   Measured on a character with no Legacy points — the \"Well Rested\" \
+                   perk is still expected to change this, and whether a character has \
+                   bought it is readable from the Legacy Adventure tree (nine nodes, \
+                   ranks purchased per node) but is not yet captured",
         },
     }
 }
