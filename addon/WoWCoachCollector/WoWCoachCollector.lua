@@ -138,9 +138,38 @@ end
 -- containers they read and in when reading them is valid. Returns nil when no
 -- container answered at all, which is what separates "could not look" from
 -- "looked, and it was empty".
-local function captureContainers(ids)
+--
+-- IMPOSSIBLE READINGS ARE NOT MEASUREMENTS
+--
+-- Around a loading screen and during logout the client keeps answering
+-- container calls after it has stopped being able to answer them truthfully.
+-- A live Dardring capture on 22 October recorded the backpack as 20 slots with
+-- 2 free, and **zero** items: eighteen occupied slots, none of which returned
+-- anything. Bags 1-4 were missing entirely. Stored as a fact, that erased a
+-- 68-slot inventory and flipped two item-collection quests back to active.
+--
+-- So a reading is refused, and nil returned, when:
+--
+-- 1. a container reports occupied slots that return no item. The free-slot
+--    count and the item lookups are two answers to the same question, and when
+--    they disagree the item lookups have been torn down. Refusing the whole
+--    reading, not just that bag, because the moment it happens to one bag it
+--    is happening to all of them.
+-- 2. a bag the previous good reading saw, still equipped as the same item,
+--    now reports no slots. A bag cannot shrink to nothing while it is on.
+--
+-- nil keeps the caller's last good reading in place, the same contract the
+-- bank already relies on. What this cannot catch is a reading that is wrong
+-- and self-consistent; the caller defers captures away from loading screens
+-- and logout for that.
+local function captureContainers(ids, previous)
     local bags, items = {}, {}
     local totalSlots, freeSlots, sawAnyBag = 0, 0, false
+
+    local previousBags = {}
+    for _, seen in ipairs(previous and previous.bags or {}) do
+        if seen.bagIndex then previousBags[seen.bagIndex] = seen end
+    end
 
     for _, bag in ipairs(ids) do
         local slots = containerNumSlots(bag)
@@ -152,9 +181,20 @@ local function captureContainers(ids)
             bags[#bags + 1] = {
                 bagIndex = bag, itemID = bagItemID(bag), slots = slots, freeSlots = free,
             }
+            local occupied, answered = slots - free, 0
             for slot = 1, slots do
                 local itemID, count = containerItem(bag, slot)
-                if itemID then items[itemID] = (items[itemID] or 0) + (count or 1) end
+                if itemID then
+                    answered = answered + 1
+                    items[itemID] = (items[itemID] or 0) + (count or 1)
+                end
+            end
+            if answered < occupied then return nil end
+        else
+            local seen = previousBags[bag]
+            if seen and seen.itemID and seen.slots and seen.slots > 0
+                and bagItemID(bag) == seen.itemID then
+                return nil
             end
         end
     end
@@ -177,8 +217,8 @@ local BAG_IDS = { 0, 1, 2, 3, 4 }
 -- that grows one is captured without an addon update.
 local BANK_IDS = { -1, -3, 5, 6, 7, 8, 9, 10, 11 }
 
-local function captureBags()
-    return captureContainers(BAG_IDS)
+local function captureBags(previous)
+    return captureContainers(BAG_IDS, previous)
 end
 
 -- The bank, which is only readable while its window is open.
@@ -192,8 +232,8 @@ end
 -- So the caller gates this on the bank frame being open, and the snapshot
 -- carries the time it was taken. A bank seen last Tuesday is still the best
 -- information anyone has; it simply has to say so rather than pass for current.
-local function captureBank()
-    local bank = captureContainers(BANK_IDS)
+local function captureBank(previous)
+    local bank = captureContainers(BANK_IDS, previous)
     if not bank then return nil end
     bank.capturedAt = time()
     return bank
@@ -843,6 +883,29 @@ local function captureQuests()
     return captureQuestsFromTitles()
 end
 
+-- Carry "complete" forward when the bags could not be read.
+--
+-- A collection quest is complete only while its items are in the bags, so the
+-- client works it out from the same container data that goes missing around a
+-- loading screen. On 22 October that turned The Reagent Thief (six Marsh Venom,
+-- all still carried) and Martek the Exiled (a letter) back to active.
+--
+-- Only applied when this capture's bag reading was refused. With readable bags
+-- a quest going from complete to active is real (items sold, destroyed, or a
+-- timer run out) and must be recorded. Keyed by questID, so a quest accepted or
+-- handed in during the same window is still picked up correctly.
+local function keepCompletedStates(quests, previous)
+    local wasComplete = {}
+    for _, quest in ipairs(previous or {}) do
+        if quest.questID and quest.state == "complete" then wasComplete[quest.questID] = true end
+    end
+    for _, quest in ipairs(quests) do
+        if quest.state == "active" and quest.questID and wasComplete[quest.questID] then
+            quest.state = "complete"
+        end
+    end
+end
+
 --------------------------------------------------------------------------------
 -- Ruleset (Forever)
 --
@@ -1217,14 +1280,17 @@ function collector.capture()
     local legacy = captureLegacy()
     if legacy then record.legacy = legacy end
 
+    -- Bags before quests: whether the bags could be read decides how far the
+    -- quest states can be trusted.
+    local inventory = captureBags(record.inventory)
+    if inventory then record.inventory = inventory end
+
     local quests, questsComplete = captureQuests()
     if quests then
+        if not inventory then keepCompletedStates(quests, record.quests) end
         record.quests = quests
         record.questsComplete = questsComplete
     end
-
-    local inventory = captureBags()
-    if inventory then record.inventory = inventory end
 
     local ruleset = captureRuleset()
     if ruleset then record.ruleset = ruleset end
@@ -1243,7 +1309,7 @@ function collector.captureBank()
     local record = currentRecord()
     if not record then return end
 
-    local bank = captureBank()
+    local bank = captureBank(record.bank)
     if not bank then return end
     record.bank = bank
 end
@@ -1280,6 +1346,12 @@ local SNAPSHOT_EVENTS = {
     "GAME_RULES_CHANGED", "UNIT_PET", "UNIT_HAPPINESS",
 }
 
+-- The client is about to stop answering truthfully. PLAYER_LEAVING_WORLD fires
+-- before every loading screen as well as at logout, so this window opens on a
+-- zeppelin or a teleport too, and PLAYER_ENTERING_WORLD on the far side
+-- closes it.
+local LEAVING_EVENTS = { "PLAYER_LEAVING_WORLD", "PLAYER_LOGOUT" }
+
 local RECIPE_EVENTS = {
     "TRADE_SKILL_SHOW", "TRADE_SKILL_UPDATE", "TRADE_SKILL_LIST_UPDATE",
     "CRAFT_SHOW", "CRAFT_UPDATE",
@@ -1310,12 +1382,26 @@ end
 for _, event in ipairs(SNAPSHOT_EVENTS) do register(event) end
 for _, event in ipairs(RECIPE_EVENTS) do register(event) end
 for _, event in ipairs(BANK_EVENTS) do register(event) end
+for _, event in ipairs(LEAVING_EVENTS) do register(event) end
 
 local pending, sinceFlush = false, 0
 -- Whether the bank window is open, and so whether the bank can be read.
 local bankIsOpen = false
+-- Between leaving the world and arriving back in it. Nothing is captured in
+-- this window: whatever the client says is being said while it tears down.
+local leaving = false
 
 frame:SetScript("OnEvent", function(_, event, unit)
+    if event == "PLAYER_LEAVING_WORLD" or event == "PLAYER_LOGOUT" then
+        -- Drop anything queued as well, not just new events. A capture that
+        -- was due in two seconds would otherwise land mid-teardown, which is
+        -- how a burst of BAG_UPDATE_DELAYED from the loot window could write a
+        -- logout snapshot.
+        leaving, pending, sinceFlush, bankIsOpen = true, false, 0, false
+        return
+    end
+    if event == "PLAYER_ENTERING_WORLD" then leaving = false end
+    if leaving then return end
     if recipeEvent[event] then
         collector.captureRecipes()
         return
@@ -1336,9 +1422,14 @@ frame:SetScript("OnEvent", function(_, event, unit)
     end
     -- PLAYER_XP_UPDATE carries the unit that changed; ignore everyone else.
     if event == "PLAYER_XP_UPDATE" and unit ~= "player" then return end
+    -- Arriving in the world is a reason to capture, not a moment to. The
+    -- client fires these as the loading screen lifts, before bag and item data
+    -- have finished arriving, so the capture is queued behind the full
+    -- throttle rather than taken on the spot. Restarting the clock is
+    -- deliberate: a capture already queued from before the loading screen
+    -- should wait too.
     if event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then
-        collector.capture()
-        pending, sinceFlush = false, 0
+        pending, sinceFlush = true, 0
         return
     end
     pending = true
@@ -1346,7 +1437,7 @@ end)
 
 if frame.SetScript then
     frame:SetScript("OnUpdate", function(_, elapsed)
-        if not pending then return end
+        if not pending or leaving then return end
         sinceFlush = sinceFlush + (elapsed or 0)
         if sinceFlush < THROTTLE_SECONDS then return end
         sinceFlush = 0

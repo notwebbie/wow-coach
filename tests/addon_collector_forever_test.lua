@@ -297,6 +297,7 @@ local function record() return assert(WoWCoachCollectorDB.characters[key], "no s
 --------------------------------------------------------------------------------
 
 frame:Fire("PLAYER_LOGIN")
+frame:Tick(5)
 local snap = record()
 
 check(snap.gameFlavor == "forever", "the C_SkillInfo sentinel should identify Forever")
@@ -455,6 +456,7 @@ check(snap.professionsReturned == 6,
 
 world.interface = 30500
 frame:Fire("PLAYER_ENTERING_WORLD")
+frame:Tick(5)
 check(record().gameFlavor == "forever",
     "an interface number outside all known ranges must still resolve via the sentinel")
 check(record().interfaceVersion == 30500, "the new raw interface number is stored")
@@ -464,6 +466,7 @@ check(collector.gameFlavor(30500, false) == "retail",
     "without the sentinel a Forever client is indistinguishable from retail")
 world.interface = 16001
 frame:Fire("PLAYER_ENTERING_WORLD")
+frame:Tick(5)
 
 --------------------------------------------------------------------------------
 -- Partial captures and ruleset changes

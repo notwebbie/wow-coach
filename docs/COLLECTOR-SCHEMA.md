@@ -351,6 +351,29 @@ the client happened to have the item loaded.
 `inventory` covers bags 0–4 only. The bank is a separate key, for the reason
 below.
 
+**A bag reading the client cannot have meant is refused, and the last good one
+kept.** Around a loading screen and during logout the client goes on answering
+container calls after it has stopped being able to answer them truthfully: slot
+sizes and free counts stay right while every item lookup comes back nil. A live
+capture on 22 October recorded a 20-slot backpack with 2 free and no items at
+all, with bags 1–4 missing, and that replaced a 68-slot inventory. So the
+collector discards the whole reading when:
+
+1. a bag reports occupied slots that return no item, or
+2. a bag the last good reading saw, still equipped as the same item, reports no
+   slots.
+
+The collector also never captures between `PLAYER_LEAVING_WORLD` (or
+`PLAYER_LOGOUT`) and the next `PLAYER_ENTERING_WORLD`, and queues the capture
+that follows a loading screen behind the normal throttle rather than taking it
+the instant the screen lifts.
+
+Because the client works out a collection quest's completion from the same
+bag data, a capture whose bag reading was refused also keeps any quest that
+was `complete` from dropping back to `active`. With readable bags that
+transition is real (items sold, destroyed, or a timer run out) and is recorded
+as normal.
+
 ### Bank
 
 ```lua

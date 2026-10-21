@@ -34,6 +34,8 @@ local world = {
     quest_header_collapsed = false,
     skill_header_expanded = true,
     petName = nil,
+    -- isComplete for quest 9440, a number on this client: 1 complete, nil active.
+    quest_9440_complete = 1,
 }
 
 WOW_PROJECT_ID = 5
@@ -156,7 +158,7 @@ function GetQuestLogTitle(index)
     if index == 1 then
         return "Hellfire Peninsula", 0, nil, true, world.quest_header_collapsed, nil, 0, 0
     elseif index == 2 then
-        return "Cleansing the Waters", 62, nil, false, false, 1, 0, 9440
+        return "Cleansing the Waters", 62, nil, false, false, world.quest_9440_complete, 0, 9440
     end
     return "Failed Errand", 60, nil, false, false, -1, 0, 9441
 end
@@ -180,13 +182,28 @@ local bag_items = {
     [5] = { [1] = { 2772, 20 } },
 }
 local function is_bank(bag) return bag == -1 or bag == -3 or (bag >= 5 and bag <= 11) end
-local function readable(bag) return bank_open or not is_bank(bag) end
+-- `torn_down` models the client around a loading screen or logout, the trap a
+-- live capture fell into on 22 October: sizes and free counts still answer,
+-- and every item lookup comes back nil. `vanished` lists bags whose slot count
+-- has gone to zero while the bag itself is still reported as equipped.
+local torn_down = false
+local vanished = {}
+local function readable(bag)
+    if torn_down then return false end
+    return bank_open or not is_bank(bag)
+end
 C_Container = {}
 -- The size is known whether or not the window is open.
-function C_Container.GetContainerNumSlots(bag) return bag_slots[bag] or 0 end
+function C_Container.GetContainerNumSlots(bag)
+    if vanished[bag] then return 0 end
+    return bag_slots[bag] or 0
+end
 function C_Container.GetContainerNumFreeSlots(bag)
     local slots = bag_slots[bag] or 0
-    if not readable(bag) then return slots, 0 end
+    if vanished[bag] then return 0, 0 end
+    -- A shut bank reports everything free; a torn-down bag still reports the
+    -- true free count, which is exactly what makes the two distinguishable.
+    if not torn_down and not readable(bag) then return slots, 0 end
     local used = 0
     for _ in pairs(bag_items[bag] or {}) do used = used + 1 end
     return slots - used, 0
@@ -326,7 +343,13 @@ WOW_PROJECT_ID = 5
 -- Login snapshot
 --------------------------------------------------------------------------------
 
+-- Arriving in the world queues a capture rather than taking one: the loading
+-- screen lifts before bag and item data have finished arriving.
 frame:Fire("PLAYER_LOGIN")
+check(WoWCoachCollectorDB == nil or WoWCoachCollectorDB.characters == nil
+        or WoWCoachCollectorDB.characters[key] == nil,
+    "login must not capture on the spot")
+frame:Tick(5)
 local snap = record()
 
 check(snap.schemaVersion == 2, "schema version should be 2")
@@ -524,6 +547,90 @@ check(record().moneyCopper == 999999, "non-player XP updates must not mark state
 frame:Fire("PLAYER_XP_UPDATE", "player")
 frame:Tick(10)
 check(record().moneyCopper == 222222, "player XP updates must mark state dirty")
+
+--------------------------------------------------------------------------------
+-- Loading screens and logout
+--
+-- Replays the 22 October capture: Dardring in Tanaris, backpack 20 slots with
+-- 2 free and no items readable, bags 1-4 gone, and two collection quests read
+-- back as active. Every assertion here is about refusing to believe that.
+--------------------------------------------------------------------------------
+
+local function linen_count()
+    for _, item in ipairs(record().inventory and record().inventory.contents or {}) do
+        if item.itemID == 2589 then return item.count end
+    end
+    return nil
+end
+local function quest_state(questID)
+    for _, quest in ipairs(record().quests or {}) do
+        if quest.questID == questID then return quest.state end
+    end
+    return nil
+end
+
+check(linen_count() == 32 and quest_state(9440) == "complete", "baseline before the teardown cases")
+
+-- 1. Occupied slots that return no items: refuse the whole reading.
+torn_down = true
+world.quest_9440_complete = nil   -- the client stops counting the quest's items too
+world.money = 333333
+frame:Fire("BAG_UPDATE_DELAYED")
+frame:Tick(10)
+check(record().moneyCopper == 333333, "a refused bag reading must not stop the rest of the capture")
+check(linen_count() == 32, "occupied slots with no items are a torn-down read, not an empty bag")
+check(record().inventory and record().inventory.totalSlots == 22,
+    "the last good inventory must stay whole, bags and all")
+check(quest_state(9440) == "complete",
+    "a collection quest must not drop back to active on a read whose bags were refused")
+torn_down = false
+
+-- 2. A bag still equipped as the same item cannot shrink to no slots.
+vanished[1] = true
+frame:Fire("BAG_UPDATE_DELAYED")
+frame:Tick(10)
+check(record().inventory and #record().inventory.bags == 2,
+    "an equipped bag reporting no slots must not be dropped from the inventory")
+check(linen_count() == 32, "and its contents must not be lost with it")
+vanished[1] = nil
+
+-- 3. With readable bags, complete -> active is real and must be recorded:
+-- the items were sold or destroyed, and the coach has to know.
+frame:Fire("QUEST_LOG_UPDATE")
+frame:Tick(10)
+check(quest_state(9440) == "active",
+    "with readable bags a quest that is no longer complete must be recorded as active")
+world.quest_9440_complete = 1
+frame:Fire("QUEST_LOG_UPDATE")
+frame:Tick(10)
+check(quest_state(9440) == "complete", "and completing it again is picked up")
+
+-- 4. Leaving the world drops a queued capture and ignores everything after.
+world.money = 444444
+frame:Fire("BAG_UPDATE_DELAYED")          -- queued, due in five seconds
+frame:Fire("PLAYER_LEAVING_WORLD")
+torn_down = true
+frame:Fire("BAG_UPDATE_DELAYED")          -- the burst a logout produces
+frame:Fire("QUEST_LOG_UPDATE")
+frame:Tick(10)
+check(record().moneyCopper == 333333, "nothing may be captured between leaving and entering the world")
+frame:Fire("PLAYER_LOGOUT")
+frame:Tick(10)
+check(record().moneyCopper == 333333, "and nothing after logout")
+
+-- 5. Arriving back defers past the loading screen, then captures normally.
+torn_down = false
+frame:Fire("PLAYER_ENTERING_WORLD")
+check(record().moneyCopper == 333333, "entering the world must not capture on the spot")
+frame:Tick(2)
+check(record().moneyCopper == 333333, "nor before the throttle has run")
+frame:Tick(5)
+check(record().moneyCopper == 444444, "a capture must follow once the loading screen is behind it")
+check(linen_count() == 32, "with the bags read properly again")
+-- Put the money back where the fixture expects it.
+world.money = 222222
+frame:Fire("PLAYER_MONEY")
+frame:Tick(10)
 
 --------------------------------------------------------------------------------
 -- Partial captures
