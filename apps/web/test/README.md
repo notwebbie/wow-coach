@@ -4,8 +4,26 @@ Drives `../index.html` in headless Chromium.
 
 ```sh
 npm install
+npx playwright install chromium
 node page.mjs
 ```
+
+The middle line is not optional on a fresh machine and is easy to miss: `npm
+install` fetches Playwright's library, not the browser it drives. Without it
+the run fails at `browserType.launch` with "Executable doesn't exist", which
+reads like a broken harness rather than a missing download. It only needs
+running once per machine, and again when Playwright's version changes.
+
+A sandbox that already ships a Chromium can skip the download by pointing at
+it: `CHROMIUM_PATH=/path/to/chromium node page.mjs`.
+
+**If the download finishes and then hangs**, it is stalling on extraction, not
+on the network — re-running just deletes the half-unpacked copy and fetches the
+identical archive again. Endpoint security inspecting a freshly written browser
+binary is the usual cause. The harness falls back to an installed Google
+Chrome on its own in that case, so `node page.mjs` works without finishing the
+download at all; `npx playwright install chromium` is the preferred path, not a
+required one.
 
 ## Why this exists when the web client has no build step
 

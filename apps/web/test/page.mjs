@@ -27,10 +27,32 @@ const server = createServer(async (req, res) => {
 });
 await new Promise(r => server.listen(8099, r));
 
-// CI installs its own Chromium; a sandbox that ships one points at it.
-const browser = await chromium.launch(
-  process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}
-);
+// Three ways to get a browser, tried in order of how little has to go right.
+//
+// CHROMIUM_PATH is for a sandbox that already ships one. Otherwise Playwright's
+// own download is tried, and if that is not usable, an installed Google Chrome
+// is. The fallback exists because Playwright's Chromium is a 130MB archive that
+// some machines download fine and then never finish unpacking — endpoint
+// security inspecting a freshly written browser binary is the usual culprit,
+// and re-running just re-downloads and stalls in the same place. Chrome drives
+// this suite exactly as well, and most machines already have one.
+async function openBrowser() {
+  if (process.env.CHROMIUM_PATH) {
+    return chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
+  }
+  try {
+    return await chromium.launch();
+  } catch (error) {
+    process.stderr.write(
+      "Playwright's own Chromium is not usable here (" +
+        String(error).split("\n")[0] +
+        ").\nFalling back to an installed Google Chrome.\n\n"
+    );
+    return chromium.launch({ channel: "chrome" });
+  }
+}
+
+const browser = await openBrowser();
 const results = [];
 function check(name, ok, detail = "") { results.push({ name, ok, detail }); }
 
