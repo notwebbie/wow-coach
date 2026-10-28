@@ -220,11 +220,45 @@ function C_Container.ContainerIDToInventoryID(bag) return 19 + bag end
 -- not loaded. Only one of the two stacks is known here, which is the normal
 -- state rather than an edge case.
 C_Item = C_Item or {}
+
+-- A believable wardrobe for a level 34 mage, with two deliberate holes.
+--
+-- The RANGED slot is empty: a mage at 34 with no wand is the case the gear
+-- rules exist to catch, and the fixture should carry it rather than make the
+-- test invent one. Slots 13 and 14 hold items the client has NOT cached, so
+-- they arrive as an id and nothing else — which is a third state the rules
+-- have to handle, between "a wand is equipped" and "the slot is empty".
+local WARDROBE = {
+    [1]  = { id = 7372,  "Magician's Hat",       2, 36, 31, "Armor",  "Cloth", "INVTYPE_HEAD" },
+    [5]  = { id = 6479,  "Robes of Arcana",      2, 35, 30, "Armor",  "Cloth", "INVTYPE_ROBE" },
+    [8]  = { id = 4119,  "Sorcerer Slippers",    1, 32, 27, "Armor",  "Cloth", "INVTYPE_FEET" },
+    [10] = { id = 2583,  "Gloves of Meditation", 1, 30, 25, "Armor",  "Cloth", "INVTYPE_HAND" },
+    [13] = { id = 9999,  nil },
+    [14] = { id = 9998,  nil },
+    [16] = { id = 1482,  "Gnarled Ash Staff",    2, 34, 29, "Weapon", "Staves", "INVTYPE_2HWEAPON" },
+}
+
 function C_Item.GetItemInfo(itemID)
     if itemID == 2589 then return "Linen Cloth" end
+    for _, entry in pairs(WARDROBE) do
+        if entry.id == itemID and entry[1] then
+            return entry[1], nil, entry[2], entry[3], entry[4], entry[5], entry[6], nil, entry[7]
+        end
+    end
     return nil
 end
-function GetInventoryItemID(unit, slot) assert(unit == "player") return 4000 + slot end
+-- `stripped` models the logout case for equipment: the call keeps answering
+-- and answers nothing, which read as a fact says the character is naked.
+local stripped = false
+function GetInventoryItemID(unit, slot)
+    assert(unit == "player")
+    if stripped then return nil end
+    -- Above 19 are the bag slots, which the container code reads through this
+    -- same call and which must keep answering.
+    if slot > 19 then return 4000 + slot end
+    local entry = WARDROBE[slot]
+    return entry and entry.id or nil
+end
 
 -- Trade skill and craft.
 local trade_open = true
@@ -352,8 +386,31 @@ check(WoWCoachCollectorDB == nil or WoWCoachCollectorDB.characters == nil
 frame:Tick(5)
 local snap = record()
 
-check(snap.schemaVersion == 2, "schema version should be 2")
+check(snap.schemaVersion == 3, "schema version should be 3")
 check(snap.capturedAt == world.now, "capturedAt should be the epoch time")
+
+-- Equipment. Every slot the stub answers for is captured, and the slot number
+-- is stored as a number rather than interpreted: which slot holds a wand is
+-- the core's problem, not the collector's.
+check(snap.equipment ~= nil, "equipment should be captured")
+check(#snap.equipment.slots == 7, "only the slots holding something are listed")
+check(snap.equipment.slotsRead == 19,
+    "and how many were asked for is recorded, so an empty list can be read as naked")
+
+local function worn(slot)
+    for _, entry in ipairs(snap.equipment.slots) do
+        if entry.slot == slot then return entry end
+    end
+    return nil
+end
+
+check(worn(1) and worn(1).itemID == 7372 and worn(1).name == "Magician's Hat",
+    "a cached item carries its name beside the id")
+check(worn(1).itemSubType == "Cloth" and worn(1).equipLoc == "INVTYPE_HEAD",
+    "and the client's own type and slot-kind, so a reader need not infer either")
+check(worn(13) and worn(13).itemID == 9999 and worn(13).name == nil,
+    "an uncached item stores its id alone rather than being dropped")
+check(worn(18) == nil, "an empty slot is absent from the list, not present and null")
 check(snap.gameFlavor == "tbc_classic", "flavor should be tbc_classic")
 check(snap.interfaceVersion == 20506, "raw interface number should be stored")
 check(snap.name == "Testhero" and snap.realm == "Test Realm", "identity should be captured")
@@ -584,6 +641,44 @@ check(record().inventory and record().inventory.totalSlots == 22,
 check(quest_state(9440) == "complete",
     "a collection quest must not drop back to active on a read whose bags were refused")
 torn_down = false
+
+-- 1b. The same moment, read through the equipment slots: every call answers
+-- nothing. Stored as a fact that says the character is wearing nothing, which
+-- would have the coach telling a geared warlock to go and find a wand.
+local worn_before = #record().equipment.slots
+stripped = true
+torn_down = true
+frame:Fire("BAG_UPDATE_DELAYED")
+frame:Tick(10)
+check(record().equipment and #record().equipment.slots == worn_before,
+    "an equipment read that answers for nothing while the bags are torn down is refused")
+torn_down = false
+
+-- And on its own: bags fine, equipment silent, but a previous reading saw
+-- items. A character does not strip between two captures.
+frame:Fire("BAG_UPDATE_DELAYED")
+frame:Tick(10)
+check(record().equipment and #record().equipment.slots == worn_before,
+    "nothing worn where something was worn before is refused even with good bags")
+-- 1c. The case the bag cross-check exists for, and the only one the
+-- previous-reading check cannot see: a character captured for the FIRST time
+-- during a teardown. There is no earlier reading to disagree with, so without
+-- the bags' verdict an empty answer becomes that character's opening record —
+-- a brand new warlock filed as owning nothing, which is how the Dardring bug
+-- started.
+WoWCoachCollectorDB.characters[key] = nil
+torn_down = true
+frame:Fire("BAG_UPDATE_DELAYED")
+frame:Tick(10)
+local first = WoWCoachCollectorDB.characters[key]
+check(first == nil or first.equipment == nil,
+    "a first capture during teardown must not record an empty wardrobe as fact")
+torn_down = false
+stripped = false
+
+frame:Fire("BAG_UPDATE_DELAYED")
+frame:Tick(10)
+check(#record().equipment.slots == worn_before, "and the reading returns once the client answers again")
 
 -- 2. A bag still equipped as the same item cannot shrink to no slots.
 vanished[1] = true

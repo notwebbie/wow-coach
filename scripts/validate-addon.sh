@@ -87,5 +87,5 @@ check_fixture() {
     rm -f "$regenerated"
 }
 
-check_fixture addon_collector_test.lua "$repo_root/fixtures/collector-v2.tbc.lua"
-check_fixture addon_collector_forever_test.lua "$repo_root/fixtures/collector-v2.forever.lua"
+check_fixture addon_collector_test.lua "$repo_root/fixtures/collector-v3.tbc.lua"
+check_fixture addon_collector_forever_test.lua "$repo_root/fixtures/collector-v3.forever.lua"

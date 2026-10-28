@@ -21,8 +21,8 @@ fn fixture(name: &str) -> String {
 
 #[test]
 fn reads_the_tbc_fixture() {
-    let loaded = collector::load(&fixture("collector-v2.tbc.lua")).expect("fixture should load");
-    assert_eq!(loaded.db.schema_version, Some(2));
+    let loaded = collector::load(&fixture("collector-v3.tbc.lua")).expect("fixture should load");
+    assert_eq!(loaded.db.schema_version, Some(3));
     assert_eq!(loaded.db.characters.len(), 1);
 
     let record = loaded.db.characters.values().next().unwrap();
@@ -66,7 +66,7 @@ fn reads_the_tbc_fixture() {
 #[test]
 fn reads_the_forever_fixture() {
     let loaded =
-        collector::load(&fixture("collector-v2.forever.lua")).expect("fixture should load");
+        collector::load(&fixture("collector-v3.forever.lua")).expect("fixture should load");
     let record = loaded.db.characters.values().next().unwrap();
 
     assert_eq!(record.game_flavor.as_deref(), Some("forever"));
@@ -141,7 +141,7 @@ fn a_ruleset_with_an_unknown_flag_is_not_called_normal() {
 
 #[test]
 fn the_rested_cap_is_known_only_where_the_model_holds() {
-    let loaded = collector::load(&fixture("collector-v2.tbc.lua")).unwrap();
+    let loaded = collector::load(&fixture("collector-v3.tbc.lua")).unwrap();
     let tbc = loaded.db.characters.values().next().unwrap();
     assert!(tbc.rested_cap_is_known());
     // 7800 max XP, so 1.5 levels is 11700; 900 rested is a little under 8%.
@@ -153,7 +153,7 @@ fn the_rested_cap_is_known_only_where_the_model_holds() {
     // that had read 790 read exactly 600 with its XP untouched — the beta
     // correcting an over-accrual, and the only reading that has ever sat on
     // the cap. It is Classic's 1.5 levels.
-    let loaded = collector::load(&fixture("collector-v2.forever.lua")).unwrap();
+    let loaded = collector::load(&fixture("collector-v3.forever.lua")).unwrap();
     let forever = loaded.db.characters.values().next().unwrap();
     assert!(forever.rested_cap_is_known());
     let max_xp = forever.max_xp.expect("the fixture carries one");
@@ -290,7 +290,7 @@ fn handles_non_ascii_names() {
 
 #[test]
 fn a_bank_alt_leaves_the_rotation_but_keeps_its_economy() {
-    let loaded = collector::load(&fixture("collector-v2.tbc.lua")).unwrap();
+    let loaded = collector::load(&fixture("collector-v3.tbc.lua")).unwrap();
     let key = loaded.db.characters.keys().next().unwrap().clone();
 
     let mut config = RosterConfig::default();
@@ -321,7 +321,7 @@ fn a_character_nobody_has_spoken_for_is_not_in_the_levelling_rotation() {
     // first time the addon saw it, which nobody asked for — and being wrongly
     // in a ranking is invisible, where being absent from one is printed in the
     // roster with the reason beside it.
-    let loaded = collector::load(&fixture("collector-v2.tbc.lua")).unwrap();
+    let loaded = collector::load(&fixture("collector-v3.tbc.lua")).unwrap();
     let config = RosterConfig::default();
     let key = loaded.db.characters.keys().next().unwrap();
 
@@ -403,7 +403,7 @@ fn an_empty_character_list_is_not_an_error() {
 
 #[test]
 fn round_trips_through_serde() {
-    let loaded = collector::load(&fixture("collector-v2.forever.lua")).unwrap();
+    let loaded = collector::load(&fixture("collector-v3.forever.lua")).unwrap();
     let json = serde_json::to_string(&loaded.db).unwrap();
     let back: collector::CollectorDb = serde_json::from_str(&json).unwrap();
     assert_eq!(back, loaded.db);
@@ -448,7 +448,7 @@ fn known(flavor: &str, realm: &str, name: &str) -> KnownCharacter {
 
 #[test]
 fn reports_characters_the_collector_has_never_seen() {
-    let loaded = collector::load(&fixture("collector-v2.tbc.lua")).unwrap();
+    let loaded = collector::load(&fixture("collector-v3.tbc.lua")).unwrap();
     let all = vec![
         known("_anniversary_", "Test Realm", "Testhero"),
         known("_anniversary_", "Test Realm", "Otherhero"),
@@ -474,7 +474,7 @@ fn reports_characters_the_collector_has_never_seen() {
 
 #[test]
 fn a_full_roster_reports_no_gap() {
-    let loaded = collector::load(&fixture("collector-v2.tbc.lua")).unwrap();
+    let loaded = collector::load(&fixture("collector-v3.tbc.lua")).unwrap();
     let all = vec![known("_anniversary_", "Test Realm", "Testhero")];
     let result = gap::find_gap(&all, &loaded.db.characters);
     assert!(result.is_complete());
@@ -488,14 +488,14 @@ fn a_full_roster_reports_no_gap() {
 #[test]
 fn matching_ignores_case() {
     // Folder names and the game's own capitalisation do not always agree.
-    let loaded = collector::load(&fixture("collector-v2.tbc.lua")).unwrap();
+    let loaded = collector::load(&fixture("collector-v3.tbc.lua")).unwrap();
     let all = vec![known("_anniversary_", "test realm", "TESTHERO")];
     assert!(gap::find_gap(&all, &loaded.db.characters).is_complete());
 }
 
 #[test]
 fn the_same_name_on_another_realm_is_a_different_character() {
-    let loaded = collector::load(&fixture("collector-v2.tbc.lua")).unwrap();
+    let loaded = collector::load(&fixture("collector-v3.tbc.lua")).unwrap();
     let all = vec![
         known("_anniversary_", "Test Realm", "Testhero"),
         known("_anniversary_", "Another Realm", "Testhero"),
@@ -510,7 +510,7 @@ fn forevers_duplicate_folder_tree_does_not_invent_characters() {
     // The Forever client writes the real character folder under a numeric
     // realm as `Gravehexx-Gravehex`, and a stub under the ruleset name as
     // `Gravehexx`. Both turn up in a folder walk; only one is a character.
-    let loaded = collector::load(&fixture("collector-v2.forever.lua")).unwrap();
+    let loaded = collector::load(&fixture("collector-v3.forever.lua")).unwrap();
     let all = vec![
         known("_classic_beta_", "Classic Beta PvE", "Trollmage"),
         known("_classic_beta_", "70", "Trollmage-Gemarolt"),
@@ -527,7 +527,7 @@ fn forevers_duplicate_folder_tree_does_not_invent_characters() {
 fn an_unrelated_hyphenated_name_is_kept() {
     // Dropping every hyphenated name would hide real characters; only ones
     // shadowed by a plainer name in the same flavor are duplicates.
-    let loaded = collector::load(&fixture("collector-v2.tbc.lua")).unwrap();
+    let loaded = collector::load(&fixture("collector-v3.tbc.lua")).unwrap();
     let all = vec![
         known("_anniversary_", "Test Realm", "Testhero"),
         known("_anniversary_", "Test Realm", "Jean-Luc"),
@@ -542,7 +542,7 @@ fn knowing_nothing_about_the_roster_reports_no_false_gap() {
     // A client that cannot enumerate folders passes an empty list. That must
     // not read as "every character is missing", nor as a complete roster it
     // has no evidence for.
-    let loaded = collector::load(&fixture("collector-v2.tbc.lua")).unwrap();
+    let loaded = collector::load(&fixture("collector-v3.tbc.lua")).unwrap();
     let result = gap::find_gap(&[], &loaded.db.characters);
     assert!(result.is_complete());
     assert_eq!(result.captured.len(), 1);
@@ -729,7 +729,7 @@ fn the_live_stub_shape_round_trips() {
     // The Anniversary fixture is generated from a harness whose GetProfessions
     // returns nothing, matching interface 20506. Reading it back must produce
     // the unusable-empty case rather than a confident "no professions".
-    let loaded = collector::load(&fixture("collector-v2.tbc.lua")).unwrap();
+    let loaded = collector::load(&fixture("collector-v3.tbc.lua")).unwrap();
     let record = loaded.db.characters.values().next().unwrap();
     assert_eq!(record.professions.as_ref().map(Vec::len), Some(0));
     assert_eq!(record.professions_returned, Some(0));

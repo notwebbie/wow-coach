@@ -1,40 +1,78 @@
 WoWCoachCollectorDB = {
 	["characters"] = {
 		["11:tbc_classic|10:Test Realm|8:Testhero"] = {
-			["bank"] = {
-				["bags"] = {
-					{
-						["bagIndex"] = -1,
-						["freeSlots"] = 22,
-						["itemID"] = 4018,
-						["slots"] = 24,
-					},
-					{
-						["bagIndex"] = 5,
-						["freeSlots"] = 15,
-						["itemID"] = 4024,
-						["slots"] = 16,
-					},
-				},
-				["capturedAt"] = 1700000000,
-				["contents"] = {
-					{
-						["count"] = 100,
-						["itemID"] = 2589,
-						["name"] = "Linen Cloth",
-					},
-					{
-						["count"] = 60,
-						["itemID"] = 2772,
-					},
-				},
-				["freeSlots"] = 37,
-				["totalSlots"] = 40,
-			},
 			["bindLocation"] = "Test Inn",
 			["capturedAt"] = 1700000000,
 			["class"] = "MAGE",
 			["classID"] = 8,
+			["equipment"] = {
+				["slots"] = {
+					{
+						["equipLoc"] = "INVTYPE_HEAD",
+						["itemID"] = 7372,
+						["itemLevel"] = 36,
+						["itemSubType"] = "Cloth",
+						["itemType"] = "Armor",
+						["minLevel"] = 31,
+						["name"] = "Magician's Hat",
+						["quality"] = 2,
+						["slot"] = 1,
+					},
+					{
+						["equipLoc"] = "INVTYPE_ROBE",
+						["itemID"] = 6479,
+						["itemLevel"] = 35,
+						["itemSubType"] = "Cloth",
+						["itemType"] = "Armor",
+						["minLevel"] = 30,
+						["name"] = "Robes of Arcana",
+						["quality"] = 2,
+						["slot"] = 5,
+					},
+					{
+						["equipLoc"] = "INVTYPE_FEET",
+						["itemID"] = 4119,
+						["itemLevel"] = 32,
+						["itemSubType"] = "Cloth",
+						["itemType"] = "Armor",
+						["minLevel"] = 27,
+						["name"] = "Sorcerer Slippers",
+						["quality"] = 1,
+						["slot"] = 8,
+					},
+					{
+						["equipLoc"] = "INVTYPE_HAND",
+						["itemID"] = 2583,
+						["itemLevel"] = 30,
+						["itemSubType"] = "Cloth",
+						["itemType"] = "Armor",
+						["minLevel"] = 25,
+						["name"] = "Gloves of Meditation",
+						["quality"] = 1,
+						["slot"] = 10,
+					},
+					{
+						["itemID"] = 9999,
+						["slot"] = 13,
+					},
+					{
+						["itemID"] = 9998,
+						["slot"] = 14,
+					},
+					{
+						["equipLoc"] = "INVTYPE_2HWEAPON",
+						["itemID"] = 1482,
+						["itemLevel"] = 34,
+						["itemSubType"] = "Staves",
+						["itemType"] = "Weapon",
+						["minLevel"] = 29,
+						["name"] = "Gnarled Ash Staff",
+						["quality"] = 2,
+						["slot"] = 16,
+					},
+				},
+				["slotsRead"] = 19,
+			},
 			["faction"] = "Alliance",
 			["gameFlavor"] = "tbc_classic",
 			["interfaceVersion"] = 20506,
@@ -158,7 +196,7 @@ WoWCoachCollectorDB = {
 				},
 			},
 			["restedXP"] = 900,
-			["schemaVersion"] = 2,
+			["schemaVersion"] = 3,
 			["skills"] = {
 				{
 					["header"] = "Professions",
@@ -257,5 +295,5 @@ WoWCoachCollectorDB = {
 			["zone"] = "Test Zone",
 		},
 	},
-	["schemaVersion"] = 2,
+	["schemaVersion"] = 3,
 }

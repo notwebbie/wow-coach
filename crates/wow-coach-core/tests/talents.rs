@@ -336,8 +336,8 @@ fn every_shipped_build_is_spendable() {
 #[test]
 fn the_fixtures_detail_round_trips_through_the_parser() {
     for path in [
-        "fixtures/collector-v2.forever.lua",
-        "fixtures/collector-v2.tbc.lua",
+        "fixtures/collector-v3.forever.lua",
+        "fixtures/collector-v3.tbc.lua",
     ] {
         let text = std::fs::read_to_string(
             concat!(env!("CARGO_MANIFEST_DIR"), "/../../").to_string() + path,

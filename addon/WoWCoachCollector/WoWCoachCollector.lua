@@ -21,7 +21,7 @@
 -- the better path for free.
 
 local ADDON_NAME = ...
-local SCHEMA_VERSION = 2
+local SCHEMA_VERSION = 3
 local THROTTLE_SECONDS = 5
 
 local collector = {}
@@ -219,6 +219,91 @@ local BANK_IDS = { -1, -3, 5, 6, 7, 8, 9, 10, 11 }
 
 local function captureBags(previous)
     return captureContainers(BAG_IDS, previous)
+end
+
+--------------------------------------------------------------------------------
+-- Equipment
+--
+-- The worn item in each slot, so a client can tell a caster with no wand from
+-- one who has never been looked at.
+--
+-- SLOT NUMBERS ARE NOT STORED AS MEANING
+--
+-- A wand sits in the ranged slot on the Classic clients. Whether Forever keeps
+-- it there is not something this addon should be deciding, so every slot is
+-- captured with the client's own `equipLoc` and `itemSubType` beside it, and
+-- the rules that care which item is a wand live in the core where they can be
+-- changed without an addon update. Slot 19 is the highest a Classic-era client
+-- uses; a client with more answers for them and they are captured too.
+--
+-- THE SAME TEARDOWN HAZARD AS THE BAGS
+--
+-- `GetInventoryItemID` keeps answering during logout after it has stopped
+-- answering truthfully, and an empty answer stored as a fact says the player
+-- is naked. There is no free-slot count to cross-check against here, so this
+-- borrows the bag reading's verdict: the caller passes `bagsWereRead`, and a
+-- capture that answers for nothing while the bags also could not be read is
+-- refused outright. Beyond that, a reading that finds nothing at all where the
+-- previous good one found something is refused on its own.
+--
+-- nil keeps the caller's last good reading, the same contract as the bank.
+--------------------------------------------------------------------------------
+
+local LAST_EQUIPMENT_SLOT = 19
+
+local function itemDetail(itemID)
+    local getInfo
+    if has("C_Item.GetItemInfo") then
+        getInfo = C_Item.GetItemInfo
+    elseif GetItemInfo then
+        getInfo = GetItemInfo
+    end
+    if not getInfo then return nil end
+
+    local ok, name, _, quality, itemLevel, minLevel, itemType, itemSubType, _, equipLoc =
+        pcall(getInfo, itemID)
+    if not ok then return nil end
+
+    local detail = {}
+    if type(name) == "string" and name ~= "" then detail.name = name end
+    if type(quality) == "number" then detail.quality = quality end
+    if type(itemLevel) == "number" then detail.itemLevel = itemLevel end
+    if type(minLevel) == "number" then detail.minLevel = minLevel end
+    if type(itemType) == "string" and itemType ~= "" then detail.itemType = itemType end
+    if type(itemSubType) == "string" and itemSubType ~= "" then detail.itemSubType = itemSubType end
+    if type(equipLoc) == "string" and equipLoc ~= "" then detail.equipLoc = equipLoc end
+    return detail
+end
+
+local function captureEquipment(previous, bagsWereRead)
+    if not GetInventoryItemID then return nil end
+
+    local slots, worn = {}, 0
+    for slot = 1, LAST_EQUIPMENT_SLOT do
+        local ok, itemID = pcall(GetInventoryItemID, "player", slot)
+        if ok and type(itemID) == "number" then
+            worn = worn + 1
+            local entry = { slot = slot, itemID = itemID }
+            -- The item is worn, so the client has almost certainly cached it;
+            -- when it has not, the id alone is still a fact worth keeping.
+            local detail = itemDetail(itemID)
+            if detail then
+                for key, value in pairs(detail) do entry[key] = value end
+            end
+            slots[#slots + 1] = entry
+        end
+    end
+
+    -- Nothing answered. Either the character really is wearing nothing, which
+    -- is possible but rare, or the client is being torn down, which is common.
+    -- Two ways to tell them apart, and both of them refuse rather than guess.
+    if worn == 0 then
+        if not bagsWereRead then return nil end
+        local before = previous and previous.slots
+        if before and #before > 0 then return nil end
+    end
+
+    return { slots = slots, slotsRead = LAST_EQUIPMENT_SLOT }
 end
 
 -- The bank, which is only readable while its window is open.
@@ -1284,6 +1369,12 @@ function collector.capture()
     -- quest states can be trusted.
     local inventory = captureBags(record.inventory)
     if inventory then record.inventory = inventory end
+
+    -- After the bags, and told whether they could be read: the bag capture is
+    -- the only teardown detector this client offers, and the equipment read
+    -- has no cross-check of its own.
+    local equipment = captureEquipment(record.equipment, inventory ~= nil)
+    if equipment then record.equipment = equipment end
 
     local quests, questsComplete = captureQuests()
     if quests then

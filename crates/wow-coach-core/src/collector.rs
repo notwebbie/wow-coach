@@ -177,6 +177,10 @@ pub struct CharacterRecord {
     pub quests: Option<Vec<Quest>>,
     pub quests_complete: Option<bool>,
     pub inventory: Option<Inventory>,
+    /// What the character is wearing. Absent means the capture never ran, and
+    /// is not the same as a character wearing nothing — [`Equipment::slots_read`]
+    /// is what tells those apart.
+    pub equipment: Option<Equipment>,
     /// The bank, as of the last time its window was open. Absent means it has
     /// never been seen, which is not the same as empty and must never be shown
     /// as such.
@@ -496,6 +500,91 @@ pub struct Inventory {
     pub free_slots: Option<u32>,
     #[serde(deserialize_with = "empty_table_as_list")]
     pub contents: Option<Vec<ItemStack>>,
+}
+
+/// What the character has equipped.
+///
+/// Only slots holding something appear in `slots`, so an empty list is a
+/// character wearing nothing — but only when `slots_read` says the question was
+/// asked. Both absent means no capture has run, and the two must never be
+/// shown the same way: "you have no wand" and "nobody has looked" send a
+/// player in opposite directions.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Equipment {
+    #[serde(deserialize_with = "empty_table_as_list")]
+    pub slots: Option<Vec<EquippedItem>>,
+    /// How many slots the collector asked about. The arity field, exactly like
+    /// `professionsReturned`: without it an empty list is unreadable.
+    pub slots_read: Option<u8>,
+}
+
+impl Equipment {
+    /// Whether an empty `slots` list can be believed as "wearing nothing".
+    pub fn is_usable(&self) -> bool {
+        match (&self.slots, self.slots_read) {
+            (Some(slots), _) if !slots.is_empty() => true,
+            (_, Some(read)) => read > 0,
+            _ => false,
+        }
+    }
+
+    pub fn worn(&self) -> &[EquippedItem] {
+        self.slots.as_deref().unwrap_or(&[])
+    }
+
+    /// The item in a slot, if anything is in it.
+    pub fn in_slot(&self, slot: u8) -> Option<&EquippedItem> {
+        self.worn().iter().find(|item| item.slot == Some(slot))
+    }
+}
+
+/// One worn item.
+///
+/// `item_id` is the fact. Everything else comes from the client's item cache
+/// and is absent when that cache has not loaded the item, which happens often
+/// enough that no rule may assume it is present.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct EquippedItem {
+    pub slot: Option<u8>,
+    #[serde(rename = "itemID")]
+    pub item_id: Option<u32>,
+    pub name: Option<String>,
+    pub quality: Option<u8>,
+    pub item_level: Option<u16>,
+    /// The level needed to equip it, which is what tells a hand-me-down from a
+    /// current upgrade.
+    pub min_level: Option<u16>,
+    pub item_type: Option<String>,
+    /// `Wands`, `Bows`, `Staves`, `Cloth` — the client's own word for what the
+    /// item is. Matching on this rather than on a slot number is what keeps
+    /// the rules working if Forever moves a wand somewhere else.
+    pub item_sub_type: Option<String>,
+    /// `INVTYPE_2HWEAPON`, `INVTYPE_RANGEDRIGHT` — the client's own word for
+    /// the kind of slot it occupies.
+    pub equip_loc: Option<String>,
+}
+
+impl EquippedItem {
+    /// Case-insensitive, because the client's capitalisation is not a contract.
+    pub fn is_sub_type(&self, want: &str) -> bool {
+        self.item_sub_type
+            .as_deref()
+            .is_some_and(|got| got.eq_ignore_ascii_case(want))
+    }
+
+    pub fn is_equip_loc(&self, want: &str) -> bool {
+        self.equip_loc
+            .as_deref()
+            .is_some_and(|got| got.eq_ignore_ascii_case(want))
+    }
+
+    /// True when the client told us what this item is. False means the cache
+    /// had not loaded it, so no rule may conclude anything from its type.
+    pub fn type_is_known(&self) -> bool {
+        self.item_sub_type.is_some() || self.equip_loc.is_some()
+    }
 }
 
 /// The bank, and when it was last looked at.

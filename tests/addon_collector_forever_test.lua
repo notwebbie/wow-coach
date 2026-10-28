@@ -247,7 +247,33 @@ function C_Container.GetContainerItemInfo(bag, slot)
     return { itemID = entry[1], stackCount = entry[2] }
 end
 function C_Container.ContainerIDToInventoryID(bag) return 19 + bag end
-function GetInventoryItemID(unit, slot) return 4000 + slot end
+-- The Forever fixture is the geared counterpart to the TBC one: a level 24
+-- mage who HAS a wand, so the gear rules get a satisfied case to test against
+-- as well as a missing one. This harness had no item lookup at all before, so
+-- the fixture's equipment arrived as bare ids; it has one now.
+local WARDROBE = {
+    [1]  = { id = 4036, "Apprentice's Hat",  1, 22, 17, "Armor",  "Cloth",  "INVTYPE_HEAD" },
+    [5]  = { id = 6096, "Apprentice's Robe", 1, 24, 19, "Armor",  "Cloth",  "INVTYPE_ROBE" },
+    [16] = { id = 5265, "Ashwood Staff",     1, 23, 18, "Weapon", "Staves", "INVTYPE_2HWEAPON" },
+    [18] = { id = 5214, "Lesser Magic Wand", 1, 14,  5, "Weapon", "Wands",  "INVTYPE_RANGEDRIGHT" },
+}
+
+function GetInventoryItemID(unit, slot)
+    -- Above 19 are the bag slots, read through this same call.
+    if slot > 19 then return 4000 + slot end
+    local entry = WARDROBE[slot]
+    return entry and entry.id or nil
+end
+
+C_Item = C_Item or {}
+function C_Item.GetItemInfo(itemID)
+    for _, entry in pairs(WARDROBE) do
+        if entry.id == itemID then
+            return entry[1], nil, entry[2], entry[3], entry[4], entry[5], entry[6], nil, entry[7]
+        end
+    end
+    return nil
+end
 
 -- Trade skills: retail-shaped, gated on IsTradeSkillReady.
 local trade_ready = true
@@ -302,7 +328,18 @@ local snap = record()
 
 check(snap.gameFlavor == "forever", "the C_SkillInfo sentinel should identify Forever")
 check(snap.interfaceVersion == 16001, "raw interface number should still be stored")
-check(snap.schemaVersion == 2, "Forever support is additive; schema stays at 2")
+check(snap.schemaVersion == 3, "schema is 3 now that equipment is captured")
+
+-- Equipment, with the wand that makes this fixture the geared case.
+check(snap.equipment and #snap.equipment.slots == 4, "four slots hold something")
+local ranged
+for _, entry in ipairs(snap.equipment.slots) do
+    if entry.slot == 18 then ranged = entry end
+end
+check(ranged and ranged.name == "Lesser Magic Wand", "the wand is captured by name")
+check(ranged.itemSubType == "Wands",
+    "and by the client's own subtype, which is what a reader should match on \
+     rather than assuming which slot a wand lives in")
 check(snap.name == "Trollmage" and snap.realm == "Classic Beta PvE", "identity captured")
 check(snap.level == 24 and snap.class == "MAGE", "level and class captured")
 check(snap.restedXP == 24600 and snap.isResting == true, "rested state captured")
