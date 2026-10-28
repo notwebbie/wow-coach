@@ -309,6 +309,12 @@ impl SkillUp {
 /// One profession on one character.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProfessionPlan {
+    /// The roster key, not the display name.
+    ///
+    /// Names are unique per region in Forever but a roster can span clients,
+    /// so two characters really can share a name. Keying a plan by name would
+    /// quietly merge their professions in any caller that groups by character.
+    pub key: String,
     pub character: String,
     pub profession: String,
     pub rank: Option<u16>,
@@ -422,6 +428,7 @@ pub fn plan(entries: &[RosterEntry<'_>], holdings: &[Holding]) -> Vec<Profession
         for (profession, cache) in record.recipes.iter().flatten() {
             planned.insert(profession.as_str());
             plans.push(one(
+                entry.key,
                 entry.name(),
                 profession,
                 cache,
@@ -449,6 +456,7 @@ pub fn plan(entries: &[RosterEntry<'_>], holdings: &[Holding]) -> Vec<Profession
                 ..empty.clone()
             };
             plans.push(one(
+                entry.key,
                 entry.name(),
                 profession,
                 &cache,
@@ -473,6 +481,7 @@ pub fn plan(entries: &[RosterEntry<'_>], holdings: &[Holding]) -> Vec<Profession
 
 #[allow(clippy::too_many_arguments)]
 fn one(
+    key: &str,
     character: &str,
     profession: &str,
     cache: &ProfessionRecipes,
@@ -557,6 +566,7 @@ fn one(
     }
 
     ProfessionPlan {
+        key: key.to_string(),
         character: character.to_string(),
         profession: profession.to_string(),
         rank: cache.rank,

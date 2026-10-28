@@ -72,6 +72,10 @@ impl Standing {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct QuestRef {
+    /// The client's own quest id, kept so a client can link out to a database.
+    /// Optional because the collector has always treated a missing field as
+    /// missing rather than as zero.
+    pub quest_id: Option<u32>,
     pub title: String,
     pub level: Option<u16>,
     pub zone: Option<String>,
@@ -147,6 +151,7 @@ impl QuestPlan {
 fn quest_ref(quest: &Quest, player_level: Option<u16>) -> Option<QuestRef> {
     let title = quest.title.clone()?;
     Some(QuestRef {
+        quest_id: quest.quest_id,
         title,
         level: quest.level,
         zone: quest.header.clone(),

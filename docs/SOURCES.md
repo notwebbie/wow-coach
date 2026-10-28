@@ -177,3 +177,97 @@ one that checks nothing, because it lends the unchecked parts the credibility
 of the checked ones. This happened: a session plan cited four sources at the
 bottom while several numeric claims in the body had none. Two of those were
 later verified and held; the rest are still marked unverified.
+
+## Quest database links
+
+The quest screen links each quest to Wowhead by the client's own quest id. The
+path prefix depends on which game the character is in, and the three prefixes
+in `apps/web/index.html` are not equally well established:
+
+| Flavor | Prefix | Standing |
+|---|---|---|
+| `forever` | `/forever/quest=<id>` | **Confirmed.** A live Wowhead URL in that form was returned by search on 19 October 2026. |
+| `classic_era` | `/classic/quest=<id>` | **Not verified here.** The long-standing Classic prefix, not checked against a live page. |
+| `tbc_classic` | `/tbc/quest=<id>` | **Not verified here.** Same, and the weaker of the two — Wowhead's Classic branches were renamed as Classic progressed through its expansions. |
+| anything else | `/quest=<id>` | The bare form, used as a deliberate fallback. |
+
+An unknown flavor falls through to the bare form rather than guessing a path,
+because a link that 404s is worse than one that lands on the wrong edition: the
+first looks like the tool is broken, the second is recoverable by the reader.
+
+The two unverified rows are written down rather than quietly shipped because
+the only client anyone has run this against is Forever, and a reader who
+assumes all three were checked would be wrong. Checking them costs one page
+load each by someone with a Classic or TBC character to test against.
+
+## Gear milestones
+
+`crates/wow-coach-core/src/gear.rs` carries the first curated dataset in this
+project. Everything else in the core is measured from the client or derived by
+rule from those measurements; a milestone is somebody's judgement that a wand
+matters at level five. That difference is why each row stores its own
+provenance in the data rather than in a comment, and why a test fails the build
+if a row has no source or no date.
+
+**The table is a seed, not a finished list.** It holds what was well sourced on
+28 October 2026, a week before launch:
+
+| Milestone | Classes | Source | Checked for Forever |
+|---|---|---|---|
+| A wand, from level 5 | Mage, Priest, Warlock | Warcraft Tavern, Forever warlock levelling guide | Yes |
+| A better wand, from 13 | Mage, Priest, Warlock | Same | Yes |
+| A ranged weapon | Hunter | Carried over from Classic | **No** |
+
+The hunter row is marked unchecked in the data itself and that flag travels all
+the way to the screen, because a reader cannot weigh a claim whose standing was
+dropped on the way.
+
+Six of the nine classes have no row at all. A class with nothing recorded is
+reported as *silence*, with a caveat saying so — not as a clean bill of health.
+This is the same absent-is-not-empty trap that has caught this project over bag
+contents, profession lists and recipe caches, and it would have been easiest to
+fall into here, where an empty list of advice looks exactly like good news.
+
+**Why the table is small on purpose.** Full per-class levelling gear lists run
+to hundreds of items, Forever's data will not settle for weeks after launch,
+and stale gear advice is worse than none: a player who follows it wastes a
+trip. The bar for a row is that *not having the item is a mistake*, not that
+something better exists.
+
+**A check can be too broad here too.** The first version of the
+unidentified-item rule said that any worn item the client had not described
+made every milestone unanswerable. The committed TBC fixture — a level 34 mage
+wearing two uncached trinkets — then reported that it could not tell whether a
+wand was equipped, with the ranged slot plainly empty. Whatever those trinkets
+are, they are not wands; the client put them in trinket slots. The rule now
+only blocks on an unidentified item in a slot that could hold the thing being
+asked about. This is the third time a constant or check in this project has
+been wrong by covering too much rather than too little.
+
+## Craftable milestones and the skill gate
+
+The wand rungs carry the Enchanting skill each needs, so the tool can say "ten
+points short" rather than "cannot make this".
+
+| Item | Enchanting skill | Source | Read |
+|---|---|---|---|
+| Lesser Magic Wand | 15 | Wowpedia | 2026-10-28 |
+| Greater Magic Wand | 70 | AHledger, WoW Forever recipe page | 2026-10-28 |
+
+Greater Magic Wand's **item level 23** is also load-bearing: it is the bar a
+wand must clear to count as the upgrade rather than the thing being upgraded
+from. Without a number there, "a better wand" was satisfied by the starter wand
+the rung exists to replace — both are `Wands` and nothing else told them apart.
+Any other wand at item level 23 or above satisfies it equally; the number is a
+threshold, not a shopping list.
+
+The Wowpedia figure for the Lesser Magic Wand is Classic data rather than a
+Forever source, and the skill requirement is assumed unchanged. The AHledger
+page is Forever-specific.
+
+**Recipes are matched by name**, because the collector captures a recipe's name
+and not what it produces. That makes the match locale-dependent: an English
+client says "Greater Magic Wand" and a German one does not. A miss therefore
+reports as "nobody can make it" rather than being silently dropped, which is
+the safe direction, but it is a real limitation and the fix is the collector
+capturing a recipe's output item id.

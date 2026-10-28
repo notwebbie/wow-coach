@@ -211,9 +211,21 @@ const MAX_RECIPES: usize = 5000;
 /// `holdings` comes from [`crate::economy::survey`], so materials are already
 /// totalled per market and per item. Passing them in rather than recomputing
 /// keeps one answer to "what does the roster hold" rather than two.
-pub fn plan(entries: &[RosterEntry<'_>], holdings: &[Holding], prices: &PriceDb) -> CraftPlan {
-    let mut plan = CraftPlan::default();
-
+/// Walk every recipe the roster knows, handing each assessment to `sink`.
+///
+/// Shared by [`plan`] and [`for_recipe`] because they ask different questions
+/// of the same work. `plan` keeps what is worth making for gold; `for_recipe`
+/// keeps one named item whether or not there is a margin in it, which is what
+/// somebody asking "can anyone make me a wand" needs. Running the reagent
+/// arithmetic twice, in two places, is how the two answers would drift.
+///
+/// Returns the number of recipes considered and how many had no reagents.
+fn walk(
+    entries: &[RosterEntry<'_>],
+    holdings: &[Holding],
+    prices: &PriceDb,
+    mut sink: impl FnMut(Craftable),
+) -> (usize, usize) {
     // Holdings keyed by (market, item) so a reagent lookup cannot cross a
     // faction boundary. Two auction houses are two economies; cloth on an
     // Alliance alt cannot be posted to a Horde crafter.
@@ -252,18 +264,49 @@ pub fn plan(entries: &[RosterEntry<'_>], holdings: &[Holding], prices: &PriceDb)
                     continue;
                 };
 
-                let craftable = assess(
+                sink(assess(
                     &name, profession, &crafter, entry.role, &market, realm, recipe, reagents,
                     &held,
-                );
-                if craftable.is_makeable() {
-                    plan.ready.push(craftable);
-                } else if craftable.margin().is_some_and(|margin| margin > 0) {
-                    plan.worth_shopping_for.push(craftable);
-                }
+                ));
             }
         }
     }
+
+    (considered, recipes_without_reagents)
+}
+
+/// Every assessment of one named recipe, across the roster, unfiltered.
+///
+/// Unlike [`plan`], nothing is dropped for having no margin. A wand somebody
+/// needs is worth making whether or not it would turn a profit, and the
+/// profit-filtered view silently had no answer for exactly that question.
+///
+/// Matching is case-insensitive on the recipe name, which is the only handle
+/// the collector captures — see the note on `CraftRoute` in `gear`.
+pub fn for_recipe(
+    entries: &[RosterEntry<'_>],
+    holdings: &[Holding],
+    prices: &PriceDb,
+    recipe: &str,
+) -> Vec<Craftable> {
+    let mut found = Vec::new();
+    walk(entries, holdings, prices, |craftable| {
+        if craftable.recipe.eq_ignore_ascii_case(recipe) {
+            found.push(craftable);
+        }
+    });
+    found
+}
+
+pub fn plan(entries: &[RosterEntry<'_>], holdings: &[Holding], prices: &PriceDb) -> CraftPlan {
+    let mut plan = CraftPlan::default();
+    let (considered, recipes_without_reagents) = walk(entries, holdings, prices, |craftable| {
+        if craftable.is_makeable() {
+            plan.ready.push(craftable);
+        } else if craftable.margin().is_some_and(|margin| margin > 0) {
+            plan.worth_shopping_for.push(craftable);
+        }
+    });
 
     // Best margin first, then the ones that are simply makeable. A craft with
     // no price is still worth knowing you can make.
