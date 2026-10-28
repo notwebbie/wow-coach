@@ -38,6 +38,47 @@ jobs:
       # Scoped to the core on purpose: wow-coach-wasm is the one crate that
       # is allowed wasm-bindgen, and the bindings would be impossible without
       # it. The core staying clean is what this protects.
+      # The page calls these by name through the generated module. A rename in
+      # the crate with no matching edit here is a blank screen, and nothing
+      # else in the build would notice.
+      - name: The page and the bindings agree on the API
+        run: |
+          missing=0
+          for call in 'new Session(' '.characters()' '.set_roles(' '.recommendation()' '.notices()' '.professions()' '.quests(' '.gear('; do
+            grep -qF "$call" apps/web/index.html || { echo "::error::apps/web/index.html no longer calls $call"; missing=1; }
+          done
+          for method in 'pub fn characters(&self)' 'pub fn set_roles(&mut self' 'pub fn recommendation(&self)' 'pub fn notices(&self)' 'pub fn professions(&self)' 'pub fn quests(&self, key: &str)' 'pub fn gear(&self, key: &str)'; do
+            grep -qF "$method" crates/wow-coach-wasm/src/lib.rs || { echo "::error::wow-coach-wasm no longer exposes $method"; missing=1; }
+          done
+          exit $missing
+
+      # A static `import` of the engine is resolved before the module body
+      # runs, so a missing or broken ./pkg/ discards the whole script: no
+      # listeners, no error on screen, just a page where nothing responds.
+      # That failure is invisible to every other check here, so it gets its
+      # own. The engine is loaded with a dynamic import() at the foot of the
+      # script instead, after the interface is wired up.
+      - name: The page does not statically import the engine
+        run: |
+          if grep -nE '^[[:space:]]*import[^(]' apps/web/index.html; then
+            echo "::error::apps/web/index.html has a top-level static import." \
+                 "Load the engine with a dynamic import() at the end of the script" \
+                 "instead, or a missing build will silently kill the page."
+            exit 1
+          fi
+
+      # The grep above compares two files as text, which cannot see the seam
+      # where both halves are individually correct: a method exposed as a
+      # getter, a field renamed in serde, a listener that never attaches. Both
+      # bugs this suite has caught so far were of exactly that kind and passed
+      # every other check here. apps/web/test/README.md has the detail.
+      - name: The page works in a browser
+        run: |
+          cd apps/web/test
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          node page.mjs
+
       - name: No JS shim in the core
         run: |
           if cargo tree -p wow-coach-core --target wasm32-unknown-unknown -e normal \

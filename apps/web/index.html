@@ -1,0 +1,1014 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WoW Coach</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: three stacked bands in the order of the first run — recognise your
+   characters, say which you play, get one answer. Once roles are saved the
+   answer leads and the roster becomes reference. */
+:root {
+  --bg: #f7f6f3;
+  --surface: #ffffff;
+  --surface-sunk: #efeee9;
+  --line: #ddd9d0;
+  --line-strong: #c3bdb0;
+  --fg: #1c1a17;
+  --fg-dim: #6b6559;
+  --fg-faint: #948d7e;
+  --accent: #8a6a1f;
+  --accent-soft: #f3e7c8;
+  --bad: #8a2f2f;
+
+  --display: "Instrument Serif", ui-serif, Georgia, serif;
+  --body: "Public Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14161b; --surface: #1b1e25; --surface-sunk: #0f1116;
+    --line: #2b2f39; --line-strong: #3d4350;
+    --fg: #ecebe6; --fg-dim: #9a9faa; --fg-faint: #6d727e;
+    --accent: #d8b159; --accent-soft: #2a2416; --bad: #e08585;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14161b; --surface: #1b1e25; --surface-sunk: #0f1116;
+  --line: #2b2f39; --line-strong: #3d4350;
+  --fg: #ecebe6; --fg-dim: #9a9faa; --fg-faint: #6d727e;
+  --accent: #d8b159; --accent-soft: #2a2416; --bad: #e08585;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--body);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap {
+  max-width: 820px;
+  margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+header { display: flex; flex-direction: column; gap: 10px; }
+h1 {
+  font-family: var(--display); font-weight: 400;
+  font-size: clamp(2.1rem, 6vw, 2.9rem); line-height: 1.05;
+  margin: 0; letter-spacing: -0.01em; text-wrap: balance;
+}
+h1 em { font-style: italic; color: var(--accent); }
+.sub { color: var(--fg-dim); margin: 0; max-width: 56ch; }
+
+section { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.eyebrow {
+  display: flex; align-items: baseline; gap: 10px;
+  font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--fg-faint); font-weight: 700;
+}
+.eyebrow .rule { flex: 1; height: 1px; background: var(--line); }
+
+/* ---- drop zone -------------------------------------------------------- */
+
+.drop {
+  border: 1px dashed var(--line-strong);
+  border-radius: 3px;
+  background: var(--surface-sunk);
+  padding: 34px 22px;
+  text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+}
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop p { margin: 0; color: var(--fg-dim); max-width: 46ch; }
+.drop .big { font-family: var(--display); font-size: 1.35rem; color: var(--fg); }
+
+.where {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 10px; width: 100%; text-align: left; margin-top: 4px;
+}
+.where div {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 3px;
+  padding: 11px 13px; min-width: 0;
+}
+.where b { display: block; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--fg-faint); }
+.where code { font-family: var(--mono); font-size: 11px; color: var(--fg-dim); overflow-wrap: anywhere; display: block; margin-top: 3px; }
+
+/* ---- answer ----------------------------------------------------------- */
+
+.answer {
+  background: var(--surface); border: 1px solid var(--line);
+  border-left: 3px solid var(--accent); border-radius: 3px;
+  padding: 22px 22px 20px; display: flex; flex-direction: column; gap: 12px; min-width: 0;
+}
+.answer-who { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.answer-name { font-family: var(--display); font-size: clamp(1.7rem, 5vw, 2.2rem); line-height: 1.1; margin: 0; }
+.answer-meta { font-size: 12.5px; color: var(--fg-dim); font-variant-numeric: tabular-nums; }
+.answer-line { font-family: var(--display); font-size: clamp(1.05rem, 2.6vw, 1.3rem); line-height: 1.45; margin: 0; text-wrap: pretty; }
+
+.answer-empty {
+  background: var(--surface-sunk); border: 1px dashed var(--line-strong);
+  border-radius: 3px; padding: 24px 22px; color: var(--fg-dim);
+}
+.answer-empty strong { color: var(--fg); font-weight: 600; }
+
+ol.then { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+ol.then li { background: var(--surface); padding: 12px 14px; display: flex; gap: 12px; align-items: baseline; min-width: 0; }
+ol.then .pos { font-family: var(--mono); font-size: 12px; color: var(--fg-faint); flex: none; width: 1.4em; font-variant-numeric: tabular-nums; }
+ol.then .who { font-weight: 600; flex: none; }
+ol.then .why { color: var(--fg-dim); font-size: 13.5px; min-width: 0; }
+
+/* ---- roster ----------------------------------------------------------- */
+
+.roster { display: grid; grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); gap: 10px; }
+.toon {
+  display: flex; gap: 11px; align-items: flex-start;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 3px;
+  padding: 12px 13px; cursor: pointer; min-width: 0;
+  transition: border-color .12s ease, background .12s ease;
+}
+.toon:hover { border-color: var(--line-strong); }
+.toon:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.toon.on { background: var(--accent-soft); border-color: var(--accent); }
+.toon input { margin: 3px 0 0; accent-color: var(--accent); flex: none; width: 15px; height: 15px; }
+.toon-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.toon-name { font-weight: 700; font-size: 15px; display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.toon-name .lvl { font-family: var(--mono); font-size: 11.5px; font-weight: 500; color: var(--fg-faint); font-variant-numeric: tabular-nums; flex: none; }
+.toon-class { font-size: 12.5px; color: var(--fg-dim); }
+.toon-where { font-size: 12px; color: var(--fg-faint); overflow-wrap: anywhere; }
+
+/* ---- notes, caveats, errors ------------------------------------------- */
+
+/* The detail screens. One card per block, so quests and each profession read
+   as separate answers rather than one long column of text. */
+#plan-who {
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--fg);
+  background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: 7px; padding: 3px 8px; max-width: 60vw;
+}
+#plan-who:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.block {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  padding: 16px 18px; display: flex; flex-direction: column; gap: 10px;
+  margin-bottom: 12px;
+}
+.block-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.block-title { font-weight: 700; font-size: 15px; margin: 0; }
+.block-num {
+  font-family: var(--mono); font-size: 11.5px; color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+/* The lead sentence of a block: the thing to do, in the core's own words. */
+.lead { font-family: var(--display); font-size: 1.1rem; line-height: 1.45; margin: 0; text-wrap: pretty; }
+.lead.due { color: var(--accent); }
+/* A gap in the data, not advice. Deliberately not styled as a warning: the
+   player has done nothing wrong, the tool simply has not been shown this yet. */
+.unknown {
+  font-size: 13px; color: var(--fg-dim); background: var(--surface-sunk);
+  border-radius: 8px; padding: 10px 12px; margin: 0;
+}
+.rows { display: flex; flex-direction: column; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.row { display: flex; align-items: baseline; gap: 9px; font-size: 13px; min-width: 0; }
+.row .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.row .trail {
+  font-family: var(--mono); font-size: 11.5px; color: var(--fg-faint);
+  font-variant-numeric: tabular-nums; flex: none;
+}
+.row .short { color: var(--bad); }
+/* The game's own orange / yellow / green, as a dot rather than coloured text,
+   so the recipe name keeps full contrast in both themes. */
+.pip { width: 8px; height: 8px; border-radius: 50%; flex: none; translate: 0 -1px; }
+.pip.optimal { background: #e8720c; }
+.pip.medium { background: #d4b50a; }
+.pip.easy { background: #4a9b36; }
+.pip.unknown { background: var(--line-strong); }
+/* Zones. The one worth travelling to is the answer; the rest are reference,
+   so they are quieter rather than merely further down. */
+.zone { border-radius: 9px; padding: 11px 13px; background: var(--surface-sunk); }
+.zone + .zone { margin-top: 8px; }
+.zone.best { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+.zone-head {
+  display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap;
+  margin-bottom: 7px;
+}
+.zone-name {
+  font-weight: 700; font-size: 11.5px; text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.zone-counts {
+  font-family: var(--mono); font-size: 11px; color: var(--fg-faint);
+  margin-left: auto; font-variant-numeric: tabular-nums;
+}
+/* Housekeeping, not advice: the quest log being full is a chore, so it sits
+   under the plan rather than interrupting it. */
+.housekeeping {
+  border-top: 1px dashed var(--line-strong); padding-top: 11px;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.quest a {
+  color: inherit; text-decoration: underline;
+  text-decoration-color: var(--line-strong); text-underline-offset: 2px;
+}
+.quest a:hover { text-decoration-color: var(--accent); color: var(--accent); }
+.quest a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+/* A quest with no captured id is still shown, just not as a link. */
+.quest .mark { flex: none; color: var(--fg-faint); font-size: 11px; width: 1em; }
+.quest .mark.done { color: var(--accent); }
+.tag {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--fg-faint); flex: none;
+}
+.tag.go { color: var(--accent); font-weight: 700; }
+.tag.tight { color: var(--bad); font-weight: 700; }
+/* A claim nobody has checked against this game. Shown, not hidden: a reader
+   cannot weigh advice whose standing was dropped on the way to the screen. */
+.unchecked {
+  font-size: 11px; color: var(--fg-faint); font-style: italic;
+}
+.slots { display: flex; flex-wrap: wrap; gap: 6px; }
+.slot-chip {
+  font-size: 11.5px; padding: 3px 9px; border-radius: 99px;
+  background: var(--surface-sunk); color: var(--fg-dim);
+  border: 1px dashed var(--line-strong);
+}
+.subhead {
+  font-size: 11.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--fg-faint);
+}
+
+.caveats { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.caveats li { font-size: 13px; color: var(--fg-dim); padding-left: 14px; border-left: 2px solid var(--line-strong); min-width: 0; }
+
+.error {
+  border: 1px solid var(--bad); border-left-width: 3px; border-radius: 3px;
+  padding: 14px 16px; color: var(--fg); background: var(--surface); min-width: 0;
+}
+.error b { color: var(--bad); }
+.error code { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+
+.controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+button {
+  font-family: var(--body); font-size: 13px; font-weight: 600;
+  padding: 8px 14px; border-radius: 3px;
+  border: 1px solid var(--line-strong); background: var(--surface);
+  color: var(--fg); cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.count { font-size: 12.5px; color: var(--fg-faint); font-variant-numeric: tabular-nums; }
+
+.note { font-size: 12.5px; color: var(--fg-faint); border-top: 1px solid var(--line); padding-top: 16px; max-width: 62ch; }
+.note code { font-family: var(--mono); font-size: 11.5px; color: var(--fg-dim); }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>What should I <em>play next?</em></h1>
+    <p class="sub" id="lede">Drop your collector file in. It is read here in your browser — nothing is uploaded, and nothing leaves this machine.</p>
+  </header>
+
+  <div id="error" class="error" hidden></div>
+
+  <section id="drop-section">
+    <div class="drop" id="drop">
+      <p class="big">Drop <code>WoWCoachCollector.lua</code> here</p>
+      <p>Or <button type="button" id="pick">choose the file</button></p>
+      <div class="where">
+        <div><b>Windows</b><code>World of Warcraft\_classic_era_\WTF\Account\&lt;ACCOUNT&gt;\SavedVariables\WoWCoachCollector.lua</code></div>
+        <div><b>macOS</b><code>/Applications/World of Warcraft/_classic_era_/WTF/Account/&lt;ACCOUNT&gt;/SavedVariables/WoWCoachCollector.lua</code></div>
+      </div>
+      <p>Log out of the game first — the file is written when you log out.</p>
+    </div>
+    <input type="file" id="file" accept=".lua" hidden>
+  </section>
+
+  <section id="answer-section" hidden>
+    <div class="eyebrow"><span>Play next</span><span class="rule"></span></div>
+    <div id="answer"></div>
+  </section>
+
+  <section id="then-section" hidden>
+    <div class="eyebrow"><span>Then</span><span class="rule"></span></div>
+    <ol class="then" id="then"></ol>
+  </section>
+
+  <section id="plan-section" hidden>
+    <div class="eyebrow">
+      <span>What to do with</span>
+      <select id="plan-who" aria-label="Which character to plan for"></select>
+      <span class="rule"></span>
+    </div>
+    <div id="plan-gear"></div>
+    <div id="plan-quests"></div>
+    <div id="plan-professions"></div>
+  </section>
+
+  <section id="roster-section" hidden>
+    <div class="eyebrow"><span>Your characters</span><span class="rule"></span><span class="count" id="count"></span></div>
+    <div class="roster" id="roster"></div>
+    <div class="controls">
+      <button type="button" id="none">Untick all</button>
+      <button type="button" id="all">Tick all</button>
+      <button type="button" id="another">Load a different file</button>
+    </div>
+  </section>
+
+  <section id="caveat-section" hidden>
+    <div class="eyebrow"><span>Worth knowing</span><span class="rule"></span></div>
+    <ul class="caveats" id="caveats"></ul>
+  </section>
+
+  <p class="note" id="footnote" hidden></p>
+
+</div>
+
+<script type="module">
+// The engine is imported dynamically, at the foot of this script, on purpose.
+// A static `import` is resolved before a single line of the module runs, so if
+// ./pkg/ is missing — the build has not been run, or the folder is served
+// without it — the entire module is discarded before any listener is attached.
+// The page then looks like it loaded and every control is dead, with nothing
+// on screen to say why. Importing last means the interface is wired up first
+// and a missing build arrives as a visible error instead of silence.
+let Session = null;
+
+// Blizzard's own class colours. A WoW player reads a roster by colour before
+// they read a word, so this is the one piece of the game's vernacular that
+// does real work here rather than decorating.
+const CLASS_COLOUR = {
+  WARRIOR: "#C79C6E", PALADIN: "#F58CBA", HUNTER: "#ABD473", ROGUE: "#FFF569",
+  PRIEST: "#D8D8D8", DEATHKNIGHT: "#C41F3B", SHAMAN: "#2E8FE0", MAGE: "#4EC2EC",
+  WARLOCK: "#9482C9", DRUID: "#FF7D0A", MONK: "#00FF96", DEMONHUNTER: "#A330C9",
+  EVOKER: "#33937F"
+};
+const CLASS_NAME = {
+  WARRIOR: "Warrior", PALADIN: "Paladin", HUNTER: "Hunter", ROGUE: "Rogue",
+  PRIEST: "Priest", DEATHKNIGHT: "Death Knight", SHAMAN: "Shaman", MAGE: "Mage",
+  WARLOCK: "Warlock", DRUID: "Druid", MONK: "Monk", DEMONHUNTER: "Demon Hunter",
+  EVOKER: "Evoker"
+};
+// The collector stores the locale-independent race file name; these are the
+// few that do not read as themselves.
+const RACE_NAME = { Scourge: "Undead", BloodElf: "Blood Elf", NightElf: "Night Elf", HighmountainTauren: "Highmountain Tauren" };
+
+const ROLES_KEY = "wow-coach.roles.v1";
+const $ = id => document.getElementById(id);
+
+let session = null;
+let characters = [];
+
+/** Roles persist per browser so a return visit does not re-ask. Wrapped
+ *  because storage throws in a private window and comes back empty after the
+ *  viewer clears site data — neither is a reason for the page to fail. */
+function savedRoles() {
+  try { return JSON.parse(localStorage.getItem(ROLES_KEY) || "{}"); }
+  catch { return {}; }
+}
+function saveRoles(roles) {
+  try { localStorage.setItem(ROLES_KEY, JSON.stringify(roles)); } catch { /* fine */ }
+}
+
+function showError(heading, detail) {
+  const box = $("error");
+  box.hidden = false;
+  box.innerHTML = "";
+  const b = document.createElement("b");
+  b.textContent = heading;
+  const p = document.createElement("div");
+  p.style.marginTop = "4px";
+  const code = document.createElement("code");
+  code.textContent = detail;
+  p.append(code);
+  box.append(b, p);
+}
+function clearError() { $("error").hidden = true; }
+
+// The one failure a first-time reader is most likely to hit, spelled out in
+// the two commands that fix it rather than as a stack trace.
+function showEngineMissing(detail) {
+  showError(
+    "The coaching engine did not load.",
+    detail + "  Build it with ./apps/web/build.sh from the repository root, then serve this " +
+    "folder over http (python3 -m http.server --directory apps/web 8080). A module script " +
+    "cannot load from a file:// address."
+  );
+}
+
+async function load(text) {
+  clearError();
+  if (Session === null) {
+    showEngineMissing("The coaching engine is not loaded yet, so that file cannot be read.");
+    return;
+  }
+  try {
+    session = new Session(text);
+  } catch (error) {
+    showError("That file could not be read.", String(error && error.message || error));
+    return;
+  }
+
+  characters = JSON.parse(session.characters());
+  if (characters.length === 0) {
+    showError("No characters in that file.", "The addon writes a record when you log out. Log out of at least one character and try again.");
+    return;
+  }
+
+  // Re-apply anything this browser already knows about these characters.
+  const remembered = savedRoles();
+  const mine = {};
+  for (const toon of characters) {
+    if (remembered[toon.key]) mine[toon.key] = remembered[toon.key];
+  }
+  if (Object.keys(mine).length) {
+    try { session.set_roles(JSON.stringify(mine)); } catch { /* a stale role is not fatal */ }
+    characters = JSON.parse(session.characters());
+  }
+
+  $("drop-section").hidden = true;
+  $("roster-section").hidden = false;
+  $("answer-section").hidden = false;
+  $("lede").textContent = "Read from your own machine. Tick the characters you are actually levelling and the answer follows.";
+
+  const notices = JSON.parse(session.notices());
+  const note = $("footnote");
+  note.hidden = notices.length === 0;
+  note.textContent = notices.join(" ");
+
+  draw();
+}
+
+function setRole(key, role) {
+  session.set_roles(JSON.stringify({ [key]: role }));
+  const roles = savedRoles();
+  roles[key] = role;
+  saveRoles(roles);
+  characters = JSON.parse(session.characters());
+  draw();
+}
+
+function setAll(role) {
+  const payload = {};
+  for (const toon of characters) payload[toon.key] = role;
+  session.set_roles(JSON.stringify(payload));
+  const roles = savedRoles();
+  Object.assign(roles, payload);
+  saveRoles(roles);
+  characters = JSON.parse(session.characters());
+  draw();
+}
+
+function drawRoster() {
+  const host = $("roster");
+  host.innerHTML = "";
+  let active = 0;
+  for (const toon of characters) {
+    const on = toon.role === "active";
+    if (on) active += 1;
+
+    const label = document.createElement("label");
+    label.className = "toon" + (on ? " on" : "");
+
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.id = "tick-" + toon.key;
+    box.checked = on;
+    box.addEventListener("change", () => setRole(toon.key, box.checked ? "active" : "unset"));
+
+    const body = document.createElement("div");
+    body.className = "toon-body";
+
+    const name = document.createElement("div");
+    name.className = "toon-name";
+    const who = document.createElement("span");
+    who.textContent = toon.name;
+    if (toon.class && CLASS_COLOUR[toon.class]) who.style.color = CLASS_COLOUR[toon.class];
+    const lvl = document.createElement("span");
+    lvl.className = "lvl";
+    lvl.textContent = toon.level == null ? "" : "lvl " + toon.level;
+    name.append(who, lvl);
+
+    const cls = document.createElement("div");
+    cls.className = "toon-class";
+    const bits = [];
+    if (toon.race) bits.push(RACE_NAME[toon.race] || toon.race);
+    if (toon.class) bits.push(CLASS_NAME[toon.class] || toon.class);
+    const line = bits.join(" ");
+    cls.textContent = toon.faction ? (line ? line + " · " + toon.faction : toon.faction) : line;
+
+    const where = document.createElement("div");
+    where.className = "toon-where";
+    where.textContent = [toon.zone, toon.realm].filter(Boolean).join(" · ");
+
+    body.append(name, cls, where);
+    label.append(box, body);
+    host.append(label);
+  }
+  $("count").textContent = active + " of " + characters.length + " being levelled";
+}
+
+function shortWhy(headline) {
+  return headline.split(". Also:")[0].replace(/^Level \d+, /, "");
+}
+
+function drawAdvice() {
+  const view = JSON.parse(session.recommendation());
+  const answer = $("answer");
+  answer.innerHTML = "";
+
+  if (!view.playNext) {
+    const empty = document.createElement("div");
+    empty.className = "answer-empty";
+    const strong = document.createElement("strong");
+    strong.textContent = "Nothing is marked as being levelled yet.";
+    const rest = document.createElement("div");
+    rest.textContent = "Tick the characters you are actually playing. Everything left unticked stays in your roster and out of the rotation.";
+    empty.append(strong, rest);
+    answer.append(empty);
+    $("then-section").hidden = true;
+  } else {
+    const top = view.playNext;
+    const toon = characters.find(c => c.key === top.key) || {};
+    const card = document.createElement("div");
+    card.className = "answer";
+
+    const whoRow = document.createElement("div");
+    whoRow.className = "answer-who";
+    const name = document.createElement("h2");
+    name.className = "answer-name";
+    name.textContent = top.name;
+    if (toon.class && CLASS_COLOUR[toon.class]) name.style.color = CLASS_COLOUR[toon.class];
+    const meta = document.createElement("span");
+    meta.className = "answer-meta";
+    meta.textContent = [
+      top.level == null ? null : "level " + top.level,
+      toon.race ? (RACE_NAME[toon.race] || toon.race) + " " + (CLASS_NAME[toon.class] || "") : null,
+      toon.zone
+    ].filter(Boolean).join(" · ");
+    whoRow.append(name, meta);
+
+    const line = document.createElement("p");
+    line.className = "answer-line";
+    line.textContent = top.headline;
+
+    card.append(whoRow, line);
+    answer.append(card);
+
+    const rest = view.then || [];
+    $("then-section").hidden = rest.length === 0;
+    const ol = $("then");
+    ol.innerHTML = "";
+    rest.forEach((item, i) => {
+      const toonOf = characters.find(c => c.key === item.key) || {};
+      const li = document.createElement("li");
+      const pos = document.createElement("span");
+      pos.className = "pos";
+      pos.textContent = (i + 2) + ".";
+      const who = document.createElement("span");
+      who.className = "who";
+      who.textContent = item.name;
+      if (toonOf.class && CLASS_COLOUR[toonOf.class]) who.style.color = CLASS_COLOUR[toonOf.class];
+      const why = document.createElement("span");
+      why.className = "why";
+      why.textContent = shortWhy(item.headline);
+      li.append(pos, who, why);
+      ol.append(li);
+    });
+  }
+
+  const caveats = (view.caveats || []).concat(
+    (view.park || []).map(p => p.name + " is resting nowhere, so it is accruing nothing. Park it rather than play it.")
+  );
+  $("caveat-section").hidden = caveats.length === 0;
+  const ul = $("caveats");
+  ul.innerHTML = "";
+  for (const text of caveats) {
+    const li = document.createElement("li");
+    li.textContent = text;
+    ul.append(li);
+  }
+}
+
+// --- The detail screens ------------------------------------------------
+//
+// The one-liner answers "who do I play". These answer "and then what", which
+// is the question a player actually has once the game is open. They hang off
+// a picker rather than printing every character, because a roster can run to
+// twenty-odd and a page that prints all of them is a page nobody reads.
+
+const DIFFICULTY_NOTE = {
+  optimal: "orange — always skills up",
+  medium: "yellow — usually skills up",
+  easy: "green — sometimes skills up",
+  unknown: "the client did not say"
+};
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text != null) node.textContent = text;
+  return node;
+}
+
+function block(title, trailing) {
+  const card = el("div", "block");
+  const head = el("div", "block-head");
+  head.append(el("h3", "block-title", title));
+  if (trailing) head.append(el("span", "block-num", trailing));
+  card.append(head);
+  return card;
+}
+
+// Which Wowhead database a quest id belongs in.
+//
+// `forever` is confirmed against a live page. The others are the long-standing
+// Classic prefixes but are NOT verified here, so an unknown or unlisted flavor
+// falls through to the bare `quest=` form rather than guessing a path that
+// 404s. See docs/SOURCES.md.
+const WOWHEAD_PATH = {
+  forever: "forever/",
+  tbc_classic: "tbc/",
+  classic_era: "classic/"
+};
+
+function questUrl(id, flavor) {
+  if (id == null) return null;
+  const path = WOWHEAD_PATH[flavor];
+  return "https://www.wowhead.com/" + (path == null ? "" : path) + "quest=" + id;
+}
+
+function questRow(quest, flavor, marker) {
+  const row = el("li", "row quest");
+  if (marker) {
+    const mark = el("span", "mark" + (marker === "done" ? " done" : ""), marker === "done" ? "✓" : "·");
+    row.append(mark);
+  }
+
+  // A title with no captured id is plain text. Linking to `quest=undefined`
+  // would look like a working link and lead nowhere, which is worse than no
+  // link at all.
+  const url = questUrl(quest.questId, flavor);
+  const name = el("span", "grow");
+  if (url) {
+    const link = el("a", null, quest.title);
+    link.href = url;
+    link.target = "_blank";
+    // The page itself sends nothing anywhere. A click is the player's choice,
+    // but there is no reason to hand Wowhead the address of a local file along
+    // with it.
+    link.rel = "noreferrer noopener";
+    link.title = "Look up " + quest.title + " on Wowhead";
+    name.append(link);
+  } else {
+    name.textContent = quest.title;
+  }
+  row.append(name);
+
+  // The standing without the distance is not advice: "trivial" does not tell
+  // a player whether a quest is two levels stale or twenty.
+  if (quest.by != null && quest.standing === "tooHigh") {
+    row.append(el("span", "trail", "+" + quest.by + " levels"));
+  } else if (quest.by != null && quest.standing === "trivial") {
+    row.append(el("span", "trail", quest.by + " below"));
+  } else if (quest.level != null) {
+    row.append(el("span", "trail", "lvl " + quest.level));
+  }
+  return row;
+}
+
+function questList(items, flavor, marker) {
+  const ul = el("ul", "rows");
+  for (const quest of items) ul.append(questRow(quest, flavor, marker));
+  return ul;
+}
+
+function drawGear(key) {
+  const host = $("plan-gear");
+  host.innerHTML = "";
+
+  let plan;
+  try {
+    plan = JSON.parse(session.gear(key));
+  } catch (error) {
+    host.append(el("p", "unknown", "Gear could not be read. " + String(error && error.message || error)));
+    return;
+  }
+
+  const card = block("Gear");
+
+  // Nothing captured is not the same as nothing missing, and a clean screen
+  // here would read as the second while meaning the first.
+  if (!plan.equipmentKnown) {
+    for (const caveat of plan.caveats) card.append(el("p", "unknown", caveat));
+    host.append(card);
+    return;
+  }
+
+  const due = plan.milestones.filter(m => m.state === "due");
+  const unsure = plan.milestones.filter(m => m.state === "unknowable");
+
+  if (due.length === 0 && unsure.length === 0 && plan.emptySlots.length === 0) {
+    card.append(el("p", "lead", "Nothing obvious missing."));
+  }
+
+  // Provenance travels with every milestone the page shows, in whatever state.
+  // It used to be attached only to the actionable ones, which meant the single
+  // unverified row in the table lost its warning the moment it landed in any
+  // other state — the caveat vanishing exactly where it was least expected.
+  function provenance(milestone) {
+    return el("p", "unchecked",
+      "Source: " + milestone.source + ", read " + milestone.sourceReadOn
+      + (milestone.checkedForForever ? "." : " — not checked against a Forever source."));
+  }
+
+  for (const milestone of due) {
+    card.append(el("p", "lead due", milestone.what + " — " + milestone.why));
+    card.append(el("p", "row", milestone.how));
+    card.append(provenance(milestone));
+  }
+
+  for (const milestone of unsure) {
+    card.append(el("p", "unknown",
+      "Cannot tell whether " + milestone.what.replace(/^A /, "a ") + " is equipped: " + milestone.because + "."));
+    card.append(provenance(milestone));
+  }
+
+  if (plan.emptySlots.length > 0) {
+    card.append(el("div", "subhead",
+      plan.emptySlots.length + (plan.emptySlots.length === 1 ? " empty slot" : " empty slots")));
+    const chips = el("div", "slots");
+    for (const slot of plan.emptySlots) chips.append(el("span", "slot-chip", slot.name));
+    card.append(chips);
+  }
+
+  for (const caveat of plan.caveats) card.append(el("p", "unknown", caveat));
+  host.append(card);
+}
+
+function drawQuests(key) {
+  const host = $("plan-quests");
+  host.innerHTML = "";
+
+  let plan;
+  try {
+    plan = JSON.parse(session.quests(key));
+  } catch (error) {
+    host.append(el("p", "unknown", "That character's quest log could not be read. " + String(error && error.message || error)));
+    return;
+  }
+
+  const toon = characters.find(c => c.key === key) || {};
+  const flavor = toon.flavor;
+  const card = block("Quests", plan.log.capacity ? plan.log.used + " of " + plan.log.capacity + " slots" : null);
+
+  // --- The instruction, in one or two sentences --------------------
+  const says = [];
+  if (plan.turnIns.length > 0) {
+    // First, always. They cost nothing but the walk and each frees a slot.
+    says.push(plan.turnIns.length === 1
+      ? "Hand in " + plan.turnIns[0].title + "."
+      : "Hand in " + plan.turnIns.length + " finished quests.");
+  }
+  if (plan.bestZone) {
+    const best = plan.clusters.find(cluster => cluster.zone === plan.bestZone);
+    says.push("Head to " + plan.bestZone + " — " + best.worthATrip
+      + (best.worthATrip === 1 ? " quest" : " quests") + " to clear there.");
+  } else if (plan.turnIns.length === 0) {
+    says.push(plan.clusters.length === 0
+      ? "Nothing in the quest log — pick some up."
+      : "Nothing in the log can be cleared at this level. Time for new quests.");
+  }
+  for (const sentence of says) card.append(el("p", "lead", sentence));
+
+  // --- Hand-ins, listed when there is more than one ----------------
+  if (plan.turnIns.length > 1) {
+    card.append(el("div", "subhead", "Ready to hand in"));
+    card.append(questList(plan.turnIns, flavor, "done"));
+  }
+
+  // --- Zones, best first and visibly so ----------------------------
+  const ordered = plan.clusters.slice().sort((a, b) =>
+    (b.zone === plan.bestZone) - (a.zone === plan.bestZone));
+
+  for (const cluster of ordered) {
+    const isBest = cluster.zone === plan.bestZone;
+    const zone = el("div", "zone" + (isBest ? " best" : ""));
+
+    const head = el("div", "zone-head");
+    head.append(el("span", "zone-name", cluster.zone));
+    if (isBest) head.append(el("span", "tag go", "go here"));
+    const counts = [];
+    if (cluster.complete.length) counts.push(cluster.complete.length + " to hand in");
+    if (cluster.ready.length) counts.push(cluster.ready.length + " ready");
+    if (cluster.tooHigh.length) counts.push(cluster.tooHigh.length + " too high");
+    if (cluster.trivial.length) counts.push(cluster.trivial.length + " grey");
+    if (counts.length) head.append(el("span", "zone-counts", counts.join(" · ")));
+    zone.append(head);
+
+    // Only what can actually be done is listed. The counts above already say
+    // how much is out of reach, and printing twenty grey titles buries the two
+    // that matter.
+    if (cluster.complete.length) zone.append(questList(cluster.complete, flavor, "done"));
+    if (cluster.ready.length) zone.append(questList(cluster.ready, flavor, "ready"));
+    card.append(zone);
+  }
+
+  // --- Housekeeping, below the plan --------------------------------
+  const chores = [];
+  if (plan.log.isTight) chores.push("tight");
+  if (plan.caveats.length) chores.push("caveats");
+  if (chores.length) {
+    const foot = el("div", "housekeeping");
+    if (plan.log.isTight) {
+      const warn = el("p", "row");
+      warn.append(el("span", "tag tight", "Log nearly full"));
+      warn.append(el("span", "grow", plan.log.free === 0
+        ? "No room to accept anything new."
+        : "Only " + plan.log.free + " slot" + (plan.log.free === 1 ? "" : "s") + " left."));
+      foot.append(warn);
+      if (plan.dropCandidates.length > 0) {
+        foot.append(el("div", "subhead", "Worth dropping"));
+        foot.append(questList(plan.dropCandidates, flavor, "ready"));
+      }
+    }
+    for (const caveat of plan.caveats) foot.append(el("p", "unknown", caveat));
+    card.append(foot);
+  }
+
+  host.append(card);
+}
+
+function drawProfessions(key) {
+  const host = $("plan-professions");
+  host.innerHTML = "";
+
+  let all;
+  try {
+    all = JSON.parse(session.professions());
+  } catch (error) {
+    host.append(el("p", "unknown", "Professions could not be read. " + String(error && error.message || error)));
+    return;
+  }
+
+  // Keyed, not named: two characters on different clients can share a name.
+  const mine = all.filter(plan => plan.key === key);
+  if (mine.length === 0) {
+    host.append(el("p", "unknown",
+      "No professions captured for this character. Log in and out once with the addon enabled, and they will appear."));
+    return;
+  }
+
+  for (const plan of mine) {
+    const rank = plan.rank == null || plan.maxRank == null ? null : plan.rank + " / " + plan.maxRank;
+    const card = block(plan.profession, rank);
+
+    if (plan.training.sentence) {
+      const lead = el("p", "lead", plan.training.sentence);
+      if (plan.training.state === "due") lead.classList.add("due");
+      card.append(lead);
+    }
+
+    if (!plan.recipesKnown) {
+      // Absent is not empty. Saying "nothing to make" here would be a lie
+      // about a profession nobody has opened the window for.
+      card.append(el("p", "unknown",
+        "No recipe list captured. Open the " + plan.profession
+        + " window in game once and log out, and what is still worth making will show here."));
+    } else if (plan.outOfUsefulRecipes) {
+      card.append(el("p", "unknown",
+        "Every recipe you know here is grey — none of them will raise the skill. A trainer or a new recipe is the way up."));
+    } else {
+      const ul = el("ul", "rows");
+      for (const up of plan.skillUps) {
+        const row = el("li", "row");
+        const pip = el("span", "pip " + up.difficulty);
+        pip.title = DIFFICULTY_NOTE[up.difficulty] || up.difficulty;
+        row.append(pip, el("span", "grow", up.recipe));
+        if (up.canMake > 0) {
+          row.append(el("span", "trail", "make " + up.canMake
+            + (up.needsABankTrip ? " (bank)" : "")));
+        } else if (up.shortOf.length > 0) {
+          row.append(el("span", "trail short",
+            "need " + up.shortOf.map(s => s.shortBy + " " + s.reagent).join(", ")));
+        }
+        ul.append(row);
+      }
+      card.append(ul);
+    }
+
+    for (const note of plan.notes) card.append(el("p", "unknown", note));
+    host.append(card);
+  }
+}
+
+function planFor() {
+  const picker = $("plan-who");
+  if (picker.value && characters.some(c => c.key === picker.value)) return picker.value;
+  // Default to whoever was just recommended — the plan a player wants first is
+  // the plan for the character they have been told to play.
+  let view = null;
+  try { view = JSON.parse(session.recommendation()); } catch { /* fall through */ }
+  if (view && view.playNext) return view.playNext.key;
+  const active = characters.find(c => c.role === "active");
+  return (active || characters[0] || {}).key;
+}
+
+function drawPlan() {
+  const picker = $("plan-who");
+  const chosen = planFor();
+  if (!chosen) { $("plan-section").hidden = true; return; }
+
+  picker.innerHTML = "";
+  for (const toon of characters) {
+    const option = document.createElement("option");
+    option.value = toon.key;
+    option.textContent = toon.level == null ? toon.name : toon.name + " (" + toon.level + ")";
+    option.selected = toon.key === chosen;
+    picker.append(option);
+  }
+
+  $("plan-section").hidden = false;
+  drawGear(chosen);
+  drawQuests(chosen);
+  drawProfessions(chosen);
+}
+
+function draw() { drawRoster(); drawAdvice(); drawPlan(); }
+
+function readFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onerror = () => showError("That file could not be opened.", String(reader.error));
+  reader.onload = () => load(String(reader.result));
+  reader.readAsText(file);
+}
+
+const drop = $("drop");
+for (const type of ["dragenter", "dragover"]) {
+  drop.addEventListener(type, event => { event.preventDefault(); drop.classList.add("over"); });
+}
+for (const type of ["dragleave", "drop"]) {
+  drop.addEventListener(type, () => drop.classList.remove("over"));
+}
+drop.addEventListener("drop", event => {
+  event.preventDefault();
+  readFile(event.dataTransfer.files[0]);
+});
+$("plan-who").addEventListener("change", () => {
+  const chosen = $("plan-who").value;
+  drawGear(chosen);
+  drawQuests(chosen);
+  drawProfessions(chosen);
+});
+$("pick").addEventListener("click", () => $("file").click());
+$("file").addEventListener("change", event => readFile(event.target.files[0]));
+$("all").addEventListener("click", () => setAll("active"));
+$("none").addEventListener("click", () => setAll("unset"));
+$("another").addEventListener("click", () => {
+  $("drop-section").hidden = false;
+  $("roster-section").hidden = true;
+  $("answer-section").hidden = true;
+  $("plan-section").hidden = true;
+  $("then-section").hidden = true;
+  $("caveat-section").hidden = true;
+  $("footnote").hidden = true;
+  clearError();
+});
+
+// Everything above is wired. Now fetch the engine; whatever happens here, the
+// page can already report it.
+(async () => {
+  try {
+    const engine = await import("./pkg/wow_coach_wasm.js");
+    await engine.default();
+    Session = engine.Session;
+  } catch (error) {
+    showEngineMissing(String(error && error.message || error));
+  }
+})();
+</script>
+</body>
+</html>

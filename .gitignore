@@ -3,6 +3,7 @@
 **/target/
 /node_modules/
 **/node_modules/
+apps/web/pkg/
 /dist/
 **/dist/
 /build/
