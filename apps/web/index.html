@@ -251,6 +251,27 @@ ol.then .why { color: var(--fg-dim); font-size: 13.5px; min-width: 0; }
   background: var(--surface-sunk); color: var(--fg-dim);
   border: 1px dashed var(--line-strong);
 }
+/* One job per row: who it is for, what it is, and what has to happen. */
+.job {
+  display: flex; gap: 11px; align-items: baseline;
+  padding: 11px 13px; border-radius: 9px; background: var(--surface);
+  border: 1px solid var(--line);
+}
+.job + .job { margin-top: 8px; }
+.job.now { border-color: var(--accent); background: var(--accent-soft); }
+.job.blocked { border-left: 3px solid var(--bad); }
+.job-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.job-who { font-weight: 700; font-size: 13.5px; }
+.job-who .lvl {
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  color: var(--fg-faint); margin-left: 6px;
+}
+.job-do { font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.job-when {
+  font-family: var(--mono); font-size: 11px; color: var(--fg-faint);
+  flex: none; font-variant-numeric: tabular-nums; text-align: right;
+}
+.job-when.late { color: var(--bad); font-weight: 700; }
 .subhead {
   font-size: 11.5px; font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.07em; color: var(--fg-faint);
@@ -314,6 +335,11 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   <section id="then-section" hidden>
     <div class="eyebrow"><span>Then</span><span class="rule"></span></div>
     <ol class="then" id="then"></ol>
+  </section>
+
+  <section id="supply-section" hidden>
+    <div class="eyebrow"><span>Before you play</span><span class="rule"></span></div>
+    <div id="supply"></div>
   </section>
 
   <section id="plan-section" hidden>
@@ -705,6 +731,96 @@ function questList(items, flavor, marker) {
   return ul;
 }
 
+// Who supplies what, across the whole roster. Above the per-character plan
+// because its answers are usually about a different character than the one
+// being looked at — the mage's wand is the warlock's job.
+function drawSupply() {
+  const host = $("supply");
+  host.innerHTML = "";
+
+  let plan;
+  try {
+    plan = JSON.parse(session.provisioning());
+  } catch (error) {
+    $("supply-section").hidden = true;
+    return;
+  }
+
+  if (plan.supplies.length === 0 && plan.caveats.length === 0) {
+    $("supply-section").hidden = true;
+    return;
+  }
+  $("supply-section").hidden = false;
+
+  for (const job of plan.supplies) {
+    const route = job.route;
+    const toon = characters.find(c => c.key === job.key) || {};
+
+    // The instruction, in the shape the route actually is. Each kind is a
+    // different sentence because each one sends the player somewhere else.
+    let say;
+    switch (route.kind) {
+      case "themselves":
+        say = "Make " + route.recipe + " yourself — materials are on hand for "
+          + route.canMakeNow + ".";
+        break;
+      case "rosterCrafter":
+        say = "Have " + route.crafter + " make " + route.recipe
+          + " — they have the materials for " + route.canMakeNow + ".";
+        break;
+      case "shortOfMaterials":
+        say = route.crafter + " can make " + route.recipe + ", short "
+          + route.missing.map(m => m.shortBy + " " + m.reagent).join(", ") + ".";
+        break;
+      case "shortOfSkill":
+        say = route.crafter + " needs " + (route.need - route.have) + " more "
+          + route.profession + " points (" + route.have + " to " + route.need
+          + ") before they can make " + route.recipe + ".";
+        break;
+      case "notLearned":
+        say = route.crafter + " has the " + route.profession
+          + " skill but has not learned " + route.recipe + " — a trainer sells it.";
+        break;
+      case "maybeCapable":
+        say = route.crafter + " has " + route.profession + " " + route.rank
+          + " and may already be able to. Open their trade window in game to find out.";
+        break;
+      case "wrongFaction":
+        // Named rather than hidden: knowing you own the answer and cannot
+        // reach it is a roster decision, not a shopping one.
+        say = route.crafter + " could make " + route.recipe + ", but they are "
+          + route.faction + " — nothing crosses the faction line.";
+        break;
+      default:
+        say = "Nobody on your side can make this one. Buy it.";
+    }
+
+    const row = el("div", "job"
+      + (route.kind === "themselves" || route.kind === "rosterCrafter" ? " now" : "")
+      + (job.needsPreparation ? " blocked" : ""));
+
+    const body = el("div", "job-body");
+    const who = el("div", "job-who");
+    const name = el("span", null, job.character);
+    if (toon.class && CLASS_COLOUR[toon.class]) name.style.color = CLASS_COLOUR[toon.class];
+    who.append(name);
+    if (job.characterLevel != null) who.append(el("span", "lvl", "lvl " + job.characterLevel));
+    who.append(el("span", "lvl", job.what.toLowerCase()));
+    body.append(who, el("div", "job-do", say));
+    if (!job.checkedForForever) {
+      body.append(el("div", "unchecked", "Source: " + job.source + " — not checked against a Forever source."));
+    }
+
+    const when = el("div", "job-when" + (job.overdue ? " late" : ""),
+      job.overdue ? "overdue" : "by " + job.neededByLevel);
+
+    row.append(body, when);
+    host.append(row);
+  }
+
+  for (const caveat of plan.caveats) host.append(el("p", "unknown", caveat));
+}
+
 function drawGear(key) {
   const host = $("plan-gear");
   host.innerHTML = "";
@@ -956,7 +1072,7 @@ function drawPlan() {
   drawProfessions(chosen);
 }
 
-function draw() { drawRoster(); drawAdvice(); drawPlan(); }
+function draw() { drawRoster(); drawAdvice(); drawSupply(); drawPlan(); }
 
 function readFile(file) {
   if (!file) return;
@@ -989,6 +1105,7 @@ $("all").addEventListener("click", () => setAll("active"));
 $("none").addEventListener("click", () => setAll("unset"));
 $("another").addEventListener("click", () => {
   $("drop-section").hidden = false;
+  $("supply-section").hidden = true;
   $("roster-section").hidden = true;
   $("answer-section").hidden = true;
   $("plan-section").hidden = true;

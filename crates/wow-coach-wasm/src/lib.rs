@@ -18,6 +18,7 @@ use wow_coach_core::collector::{self, CharacterRecord};
 use wow_coach_core::economy;
 use wow_coach_core::gear::{self, GearPlan, Standing as GearStanding};
 use wow_coach_core::professions::{self, Difficulty, ProfessionPlan, SkillUp, Training};
+use wow_coach_core::provisioning::{self, Route, Supply};
 use wow_coach_core::quests::{self, QuestPlan, QuestRef, Standing, ZoneCluster};
 use wow_coach_core::roster::{self, Role, RosterConfig};
 
@@ -119,6 +120,27 @@ impl Session {
         json(&GearPlanView::from(&gear::plan(record, &name)))
     }
 
+    pub fn provisioning_json(&self) -> Result<String, String> {
+        let entries = roster::roster(&self.characters, &self.config);
+        // Same empty price db as the professions view, and for the same
+        // reason: an unpriced reagent is just as present in the bag.
+        let prices = PriceDb::default();
+        let survey = economy::survey(&entries, &prices);
+        let holdings: Vec<_> = survey
+            .holdings
+            .iter()
+            .chain(&survey.unpriced)
+            .cloned()
+            .collect();
+        let plan = provisioning::plan(
+            &entries,
+            &holdings,
+            &prices,
+            provisioning::DEFAULT_LOOKAHEAD,
+        );
+        json(&ProvisioningView::from(&plan))
+    }
+
     pub fn quests_json(&self, key: &str) -> Result<String, String> {
         let record = self
             .characters
@@ -202,6 +224,17 @@ impl Session {
     /// whole-roster view would be twenty-two lists nobody reads.
     pub fn gear(&self, key: &str) -> Result<String, JsError> {
         self.gear_json(key).map_err(|error| JsError::new(&error))
+    }
+
+    /// Who on the roster supplies what, and by when.
+    ///
+    /// Roster-wide rather than per character, because the whole point is that
+    /// the answer for one character often lives on another — and because the
+    /// faction line, which decides whether it can, is a property of the pair
+    /// rather than of either one.
+    pub fn provisioning(&self) -> Result<String, JsError> {
+        self.provisioning_json()
+            .map_err(|error| JsError::new(&error))
     }
 
     /// One character's quest log: what to hand in, where to go, and whether
@@ -567,6 +600,11 @@ struct GearPlanView {
     level: Option<u16>,
     class: Option<String>,
     empty_slots: Vec<EmptySlotView>,
+    /// How many reportable slots hold something, out of how many there are.
+    /// Carried so the page can show a ratio rather than implying every hole
+    /// is a problem — a new character has almost all of them empty.
+    slots_filled: usize,
+    slots_possible: usize,
     milestones: Vec<MilestoneView>,
     /// False when no equipment has ever been captured. Everything else here is
     /// then silence, and the page must say so rather than render a clean
@@ -614,6 +652,8 @@ impl From<&GearPlan> for GearPlanView {
             character: plan.character.clone(),
             level: plan.level,
             class: plan.class.clone(),
+            slots_filled: plan.slots_filled,
+            slots_possible: plan.slots_possible,
             empty_slots: plan
                 .empty_slots
                 .iter()
@@ -650,6 +690,186 @@ impl From<&GearPlan> for GearPlanView {
                 })
                 .collect(),
             equipment_known: plan.equipment_known,
+            caveats: plan.caveats.clone(),
+        }
+    }
+}
+
+/// The roster's provisioning plan, as the page shows it.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProvisioningView {
+    supplies: Vec<SupplyView>,
+    caveats: Vec<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SupplyView {
+    character: String,
+    key: String,
+    character_level: Option<u16>,
+    what: &'static str,
+    why: &'static str,
+    needed_by_level: u16,
+    overdue: bool,
+    /// True when something has to happen before the item can exist, so the
+    /// page can separate "collect it" from "start it now".
+    needs_preparation: bool,
+    route: RouteView,
+    source: &'static str,
+    checked_for_forever: bool,
+}
+
+/// One route, flattened for JSON. `kind` names which it is and the rest are
+/// filled in as that kind needs — a tagged union the page can switch on
+/// without parsing prose.
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct RouteView {
+    /// `themselves`, `rosterCrafter`, `shortOfMaterials`, `shortOfSkill`,
+    /// `notLearned`, `maybeCapable`, `wrongFaction` or `buy`.
+    kind: &'static str,
+    crafter: Option<String>,
+    recipe: Option<String>,
+    profession: Option<String>,
+    can_make_now: Option<u32>,
+    missing: Vec<MissingView>,
+    /// Current and required profession skill, for the gap case.
+    have: Option<u16>,
+    need: Option<u16>,
+    /// The faction that cannot send it, for the across-the-line case.
+    faction: Option<String>,
+    /// The crafter's rank, when they may already be able to and nobody has
+    /// opened their trade window to find out.
+    rank: Option<u16>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MissingView {
+    reagent: String,
+    short_by: u32,
+}
+
+impl From<&Route> for RouteView {
+    fn from(route: &Route) -> Self {
+        match route {
+            Route::Themselves {
+                recipe,
+                can_make_now,
+            } => RouteView {
+                kind: "themselves",
+                recipe: Some(recipe.clone()),
+                can_make_now: Some(*can_make_now),
+                ..RouteView::default()
+            },
+            Route::RosterCrafter {
+                crafter,
+                recipe,
+                can_make_now,
+            } => RouteView {
+                kind: "rosterCrafter",
+                crafter: Some(crafter.clone()),
+                recipe: Some(recipe.clone()),
+                can_make_now: Some(*can_make_now),
+                ..RouteView::default()
+            },
+            Route::ShortOfMaterials {
+                crafter,
+                recipe,
+                missing,
+            } => RouteView {
+                kind: "shortOfMaterials",
+                crafter: Some(crafter.clone()),
+                recipe: Some(recipe.clone()),
+                missing: missing
+                    .iter()
+                    .map(|item| MissingView {
+                        reagent: item.reagent.clone(),
+                        short_by: item.short_by,
+                    })
+                    .collect(),
+                ..RouteView::default()
+            },
+            Route::ShortOfSkill {
+                crafter,
+                profession,
+                recipe,
+                have,
+                need,
+            } => RouteView {
+                kind: "shortOfSkill",
+                crafter: Some(crafter.clone()),
+                recipe: Some(recipe.clone()),
+                profession: Some(profession.clone()),
+                have: Some(*have),
+                need: Some(*need),
+                ..RouteView::default()
+            },
+            Route::NotLearned {
+                crafter,
+                profession,
+                recipe,
+            } => RouteView {
+                kind: "notLearned",
+                crafter: Some(crafter.clone()),
+                recipe: Some(recipe.clone()),
+                profession: Some(profession.clone()),
+                ..RouteView::default()
+            },
+            Route::MaybeCapable {
+                crafter,
+                profession,
+                rank,
+            } => RouteView {
+                kind: "maybeCapable",
+                crafter: Some(crafter.clone()),
+                profession: Some(profession.clone()),
+                rank: Some(*rank),
+                ..RouteView::default()
+            },
+            Route::WrongFaction {
+                crafter,
+                faction,
+                recipe,
+            } => RouteView {
+                kind: "wrongFaction",
+                crafter: Some(crafter.clone()),
+                faction: Some(faction.clone()),
+                recipe: Some(recipe.clone()),
+                ..RouteView::default()
+            },
+            Route::Buy => RouteView {
+                kind: "buy",
+                ..RouteView::default()
+            },
+        }
+    }
+}
+
+impl From<&Supply> for SupplyView {
+    fn from(supply: &Supply) -> Self {
+        SupplyView {
+            character: supply.character.clone(),
+            key: supply.key.clone(),
+            character_level: supply.character_level,
+            what: supply.what,
+            why: supply.why,
+            needed_by_level: supply.needed_by_level,
+            overdue: supply.overdue,
+            needs_preparation: supply.needs_preparation(),
+            route: RouteView::from(&supply.route),
+            source: supply.source,
+            checked_for_forever: supply.checked_for_forever,
+        }
+    }
+}
+
+impl From<&provisioning::ProvisioningPlan> for ProvisioningView {
+    fn from(plan: &provisioning::ProvisioningPlan) -> Self {
+        ProvisioningView {
+            supplies: plan.supplies.iter().map(SupplyView::from).collect(),
             caveats: plan.caveats.clone(),
         }
     }

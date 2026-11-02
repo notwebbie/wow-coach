@@ -219,8 +219,16 @@ impl Milestone {
 }
 
 const WAND_CLASSES: &[&str] = &["MAGE", "PRIEST", "WARLOCK"];
+const MAIL_AT_40: &[&str] = &["SHAMAN", "HUNTER"];
+const PLATE_AT_40: &[&str] = &["WARRIOR", "PALADIN"];
 const HUNTER: &[&str] = &["HUNTER"];
 const RANGED_WEAPONS: &[&str] = &["Bows", "Guns", "Crossbows"];
+
+const FOREVER_TALENTS: Provenance = Provenance {
+    source: "wowforevertalents.com, per-class armour and weapon proficiency pages",
+    read_on: "2026-10-31",
+    checked_for_forever: true,
+};
 
 const TAVERN_WARLOCK: Provenance = Provenance {
     source: "Warcraft Tavern, Forever warlock levelling guide",
@@ -275,6 +283,36 @@ pub const MILESTONES: &[Milestone] = &[
         }),
         provenance: TAVERN_WARLOCK,
     },
+    // Armour proficiency. The one gear event in levelling that is genuinely
+    // binary rather than incremental: below the level you cannot wear the
+    // class at all, above it everything you own is a tier behind. Confirmed
+    // separately for each class rather than assumed from one.
+    Milestone {
+        what: "Mail armour",
+        line: "armour",
+        why: "Mail unlocks at 40, and every leather piece still on at 41 is \
+              strictly worse armour than what you can now wear.",
+        from_level: 40,
+        classes: MAIL_AT_40,
+        requirement: Requirement::SubType("Mail"),
+        how: "Quest rewards and drops from 40 onward are mail for your class. \
+              One piece is enough to count as having noticed; the rest follows \
+              as you level.",
+        craft: None,
+        provenance: FOREVER_TALENTS,
+    },
+    Milestone {
+        what: "Plate armour",
+        line: "armour",
+        why: "Plate unlocks at 40, and mail worn past it is a tier of armour \
+              you are simply leaving on the floor.",
+        from_level: 40,
+        classes: PLATE_AT_40,
+        requirement: Requirement::SubType("Plate"),
+        how: "Quest rewards and drops from 40 onward are plate for your class.",
+        craft: None,
+        provenance: FOREVER_TALENTS,
+    },
     Milestone {
         what: "A ranged weapon",
         line: "ranged",
@@ -287,7 +325,10 @@ pub const MILESTONES: &[Milestone] = &[
               — any vendor ranged weapon beats none.",
         craft: None,
         provenance: Provenance {
-            source: "Carried over from Classic; not checked against a Forever source",
+            // Just the origin. Whether anyone checked it is what
+            // `checked_for_forever` is for, and saying it in both places got
+            // it printed twice in the same sentence on the page.
+            source: "Carried over from Classic",
             read_on: "2026-10-28",
             checked_for_forever: false,
         },
@@ -342,9 +383,16 @@ pub struct GearPlan {
     pub character: String,
     pub level: Option<u16>,
     pub class: Option<String>,
-    /// Empty when the equipment could be read and nothing is missing. Always
-    /// empty when it could not be read — check `equipment_known` first.
+    /// Slots worth mentioning as empty. Always empty when the equipment could
+    /// not be read — check `equipment_known` first — and also empty for a
+    /// character too lightly geared for a hole to mean anything, which
+    /// `slots_filled` and `slots_possible` let a caller see for itself.
     pub empty_slots: Vec<EmptySlot>,
+    /// How many of the reportable slots hold something, and how many there
+    /// are. Carried so a client can say "4 of 16" rather than implying the
+    /// twelve are a problem.
+    pub slots_filled: usize,
+    pub slots_possible: usize,
     pub milestones: Vec<MilestoneStatus>,
     /// False when no equipment capture has run for this character. Everything
     /// else here is then silence rather than a clean bill of health.
@@ -474,6 +522,8 @@ pub fn plan(record: &CharacterRecord, name: &str) -> GearPlan {
             level,
             class,
             empty_slots: Vec::new(),
+            slots_filled: 0,
+            slots_possible: 0,
             milestones: Vec::new(),
             equipment_known: false,
             caveats,
@@ -487,15 +537,49 @@ pub fn plan(record: &CharacterRecord, name: &str) -> GearPlan {
         .in_slot(slot::MAIN_HAND)
         .is_some_and(|item| item.is_equip_loc("INVTYPE_2HWEAPON"));
 
-    let empty_slots = REPORTABLE
+    let possible: Vec<&(u8, &'static str)> = REPORTABLE
         .iter()
         .filter(|(number, _)| !(two_handed && *number == slot::OFF_HAND))
-        .filter(|(number, _)| kit.in_slot(*number).is_none())
-        .map(|(number, name)| EmptySlot {
-            slot: *number,
-            name,
-        })
         .collect();
+    let slots_possible = possible.len();
+    let slots_filled = possible
+        .iter()
+        .filter(|(number, _)| kit.in_slot(*number).is_some())
+        .count();
+
+    // An empty slot only means something relative to the rest of the wardrobe.
+    //
+    // A level 1 wearing the shirt and weapon they were created with has
+    // fifteen empty slots, and listing them says only "you are new". Run on
+    // launch night against four fresh characters, that was the gear screen's
+    // most prominent output and its least useful. Fourteen filled and two
+    // empty is a different statement entirely: those two are conspicuous.
+    //
+    // The measure is the character's own state rather than an expectation of
+    // what a level ought to have, because this project has no sourced per-slot
+    // level data and inventing some would be a judgement wearing a fact's
+    // clothes.
+    //
+    // A THIRD IS A JUDGEMENT, and it is written here in the open rather than
+    // hidden inside a comparison. A half was tried first and was too greedy:
+    // it silenced a level 34 with seven of fifteen slots filled, which is a
+    // character who genuinely should hear about the bare shoulders. A third
+    // keeps that case and still suppresses a freshly created character, who
+    // has exactly one reportable slot filled. `slots_filled` and
+    // `slots_possible` travel alongside regardless, so a caller can always
+    // show the real ratio rather than the verdict.
+    let empty_slots = if slots_filled * 3 >= slots_possible {
+        possible
+            .iter()
+            .filter(|(number, _)| kit.in_slot(*number).is_none())
+            .map(|(number, name)| EmptySlot {
+                slot: *number,
+                name,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
 
     let milestones = narrow(rungs(record, kit));
 
@@ -505,8 +589,8 @@ pub fn plan(record: &CharacterRecord, name: &str) -> GearPlan {
     if milestones.is_empty() {
         let who = class.as_deref().unwrap_or("this class");
         caveats.push(format!(
-            "No gear milestones have been recorded for {who} yet, so the list above is \
-             silence rather than a clean bill of health. Empty slots are still reported."
+            "No gear milestones have been recorded for {who} yet, so nothing above is \
+             advice — it is silence, not a clean bill of health."
         ));
     }
 
@@ -515,6 +599,8 @@ pub fn plan(record: &CharacterRecord, name: &str) -> GearPlan {
         level,
         class,
         empty_slots,
+        slots_filled,
+        slots_possible,
         milestones,
         equipment_known: true,
         caveats,

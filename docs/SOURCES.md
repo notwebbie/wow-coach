@@ -271,3 +271,37 @@ client says "Greater Magic Wand" and a German one does not. A miss therefore
 reports as "nobody can make it" rather than being silently dropped, which is
 the safe direction, but it is a real limitation and the fix is the collector
 capturing a recipe's output item id.
+
+## Armour proficiency at 40
+
+| Class | Tier | Unlocks at | Source | Read |
+|---|---|---|---|---|
+| Shaman, Hunter | Mail | 40 | wowforevertalents.com, per-class pages | 2026-10-31 |
+| Warrior, Paladin | Plate | 40 | Same | 2026-10-31 |
+
+Each class was checked on its own page rather than inferred from one of them,
+because the classes differ in what they can wear *before* 40: a warrior wears
+mail from level 1, so mail is not an event for them and plate is. Getting that
+backwards would have the tool congratulating a level 45 warrior for mail they
+had been wearing for forty levels.
+
+This is the one gear event in levelling that is genuinely binary. Everything
+else is a better version of a thing you already have; below 40 you cannot wear
+the tier at all, and above it everything you own is a tier behind.
+
+**One piece counts as met.** The step change is realising the tier is open, not
+finishing the set — a player wearing one mail piece has noticed, and the rest
+follows from ordinary levelling without a coach. The cost of that choice is
+that a shaman with one mail chest and seven leather pieces reads as done; the
+alternative, nagging until a full set is assembled, would be advice about
+something that happens on its own.
+
+Shaman weapons were researched at the same time and deliberately **not** added.
+The published progressions are per-level-band best-in-slot lists — Smite's
+Mighty Hammer at 18, Mograine's Might at 39, Thorium Greatmace at 50 — which
+are upgrades rather than step changes, and so fail this table's bar. They are
+also beta-client data by their own admission. One claim from that research is
+worth recording precisely because it is *not* settled: whether shamans can dual
+wield in Forever. Classic Era does not allow it, the Forever client's tables
+appear to, and the source says to check in game. Nothing in this project
+depends on the answer yet.

@@ -207,6 +207,25 @@ function check(name, ok, detail = "") { results.push({ name, ok, detail }); }
   await page.selectOption("#plan-who", "7:forever|16:Classic Beta PvE|9:Gravehexx");
   await page.waitForTimeout(300);
 
+  // --- Provisioning ------------------------------------------------------
+  const supply = await page.textContent("#supply").catch(() => "");
+
+  check("B: a skill gap is stated as a number of points to go",
+        supply.includes("Dardrin needs 10 more Enchanting points (60 to 70)"),
+        supply.replace(/\s+/g, " ").slice(0, 130));
+  check("B: a ready craft names who and how many",
+        supply.includes("Have Dardrin make Lesser Magic Wand") && supply.includes("materials for 3"));
+  check("B: the faction line is named, not hidden behind 'buy one'",
+        supply.includes("nothing crosses the faction line") && !supply.includes("Buy it"),
+        supply.replace(/\s+/g, " ").slice(0, 130));
+  check("B: an unverified source says so here too",
+        supply.includes("not checked against a Forever source"));
+  check("B: work that can be done now is marked apart from work that cannot",
+        (await page.$$(".job.now")).length === 1 && (await page.$$(".job.blocked")).length === 1,
+        "now=" + (await page.$$(".job.now")).length + " blocked=" + (await page.$$(".job.blocked")).length);
+  check("B: the blind spot about an unopened trade window reaches the page",
+        supply.includes("unknown rather than empty"));
+
   check("B: no uncaught page errors", errors.length === 0, errors.join(" | "));
 }
 

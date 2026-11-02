@@ -257,8 +257,10 @@ fn no_capture_is_reported_as_silence_rather_than_as_being_fully_geared() {
 #[test]
 fn a_character_wearing_nothing_is_distinguished_from_one_never_looked_at() {
     // Equipment captured, nineteen slots asked about, nothing found. That is a
-    // real naked character and every slot is a real gap — the opposite
-    // conclusion from the test above, from data that looks almost identical.
+    // real naked character and the opposite conclusion from "nobody looked",
+    // from data that looks almost identical. The distinction lives in the
+    // counts rather than in the list of holes, because a character with
+    // nothing on has nothing conspicuous about any one slot.
     let mut record = ungeared();
     let kit = record.equipment.as_mut().unwrap();
     kit.slots = Some(Vec::new());
@@ -266,11 +268,102 @@ fn a_character_wearing_nothing_is_distinguished_from_one_never_looked_at() {
 
     let plan = gear::plan(&record, "Testhero");
     assert!(plan.equipment_known, "the question was asked and answered");
+    assert_eq!(plan.slots_filled, 0, "and answered with nothing");
     assert!(
-        plan.empty_slots.len() > 10,
-        "so every slot is genuinely empty: {}",
-        plan.empty_slots.len()
+        plan.slots_possible > 10,
+        "while still saying how many slots there were to fill: {}",
+        plan.slots_possible
     );
+}
+
+#[test]
+fn a_freshly_created_character_is_not_told_it_is_missing_fifteen_things() {
+    // The launch-night case, found by running the plan against four level 1
+    // characters: every one reported fifteen empty slots, which is what a new
+    // character IS. It was the gear screen's most prominent output and its
+    // least useful.
+    let mut record = ungeared();
+    record.level = Some(1);
+    let kit = record.equipment.as_mut().unwrap();
+    kit.slots = Some(vec![EquippedItem {
+        slot: Some(slot::MAIN_HAND),
+        item_id: Some(25),
+        name: Some("Worn Shortsword".to_string()),
+        item_sub_type: Some("Swords".to_string()),
+        equip_loc: Some("INVTYPE_WEAPONMAINHAND".to_string()),
+        ..EquippedItem::default()
+    }]);
+
+    let plan = gear::plan(&record, "Newbie");
+    assert!(
+        plan.empty_slots.is_empty(),
+        "one item and fourteen holes says only 'you are new': {:?}",
+        plan.empty_slots.iter().map(|s| s.name).collect::<Vec<_>>()
+    );
+    assert_eq!(plan.slots_filled, 1, "the ratio is still carried");
+    assert!(plan.slots_possible >= 15);
+}
+
+#[test]
+fn a_mostly_geared_character_still_hears_about_its_holes() {
+    // The other side of the same rule, and the reason the threshold is not a
+    // half: the committed fixture is a level 34 with seven of fifteen slots
+    // filled, and those bare shoulders are worth saying out loud.
+    let plan = gear::plan(&ungeared(), "Testhero");
+    assert!(
+        !plan.empty_slots.is_empty(),
+        "seven filled of {} is a wardrobe with gaps, not a new character",
+        plan.slots_possible
+    );
+    assert!(
+        plan.empty_slots.iter().any(|s| s.name == "Shoulder"),
+        "{:?}",
+        plan.empty_slots.iter().map(|s| s.name).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn the_threshold_is_a_third_and_the_counts_always_tell_the_truth() {
+    // Walk a character from naked to geared and watch the list switch on. The
+    // counts must be right at every step, because a client showing "4 of 16"
+    // is relying on them whether or not the list is populated.
+    let mut record = ungeared();
+    let possible = gear::plan(&record, "Testhero").slots_possible;
+
+    for filled in 0..=possible {
+        let kit = record.equipment.as_mut().unwrap();
+        // Fill from the top of the reportable list, skipping the main hand so
+        // the two-hander rule does not move `slots_possible` mid-walk.
+        kit.slots = Some(
+            (1..=20u8)
+                .filter(|slot| gear::slot_name(*slot).is_some())
+                .filter(|slot| {
+                    *slot != slot::MAIN_HAND
+                        && *slot != slot::SHIRT
+                        && *slot != slot::RANGED
+                        && *slot != slot::TABARD
+                })
+                .take(filled)
+                .map(|slot| EquippedItem {
+                    slot: Some(slot),
+                    item_id: Some(1000 + u32::from(slot)),
+                    item_sub_type: Some("Cloth".to_string()),
+                    ..EquippedItem::default()
+                })
+                .collect(),
+        );
+
+        let plan = gear::plan(&record, "Testhero");
+        assert_eq!(plan.slots_filled, filled.min(plan.slots_possible));
+        let listed = !plan.empty_slots.is_empty();
+        let expected =
+            plan.slots_filled * 3 >= plan.slots_possible && plan.slots_filled < plan.slots_possible;
+        assert_eq!(
+            listed, expected,
+            "at {filled} of {} filled, listed={listed}",
+            plan.slots_possible
+        );
+    }
 }
 
 #[test]
@@ -402,5 +495,108 @@ fn an_unidentified_item_does_not_block_a_milestone_already_met() {
         Standing::Met,
         "the bow is right there: {:?}",
         ranged.standing
+    );
+}
+
+/// A character of `class` at `level` wearing one piece of `armour`, or nothing
+/// if `armour` is None.
+fn armoured(class: &str, level: u16, armour: Option<&str>) -> CharacterRecord {
+    let mut record = ungeared();
+    record.class = Some(class.to_string());
+    record.level = Some(level);
+    let kit = record.equipment.as_mut().unwrap();
+    kit.slots = Some(
+        armour
+            .map(|sub| {
+                vec![EquippedItem {
+                    slot: Some(slot::CHEST),
+                    item_id: Some(777),
+                    item_type: Some("Armor".to_string()),
+                    item_sub_type: Some(sub.to_string()),
+                    equip_loc: Some("INVTYPE_CHEST".to_string()),
+                    ..EquippedItem::default()
+                }]
+            })
+            .unwrap_or_default(),
+    );
+    record
+}
+
+#[test]
+fn a_shaman_past_forty_still_in_leather_is_told_about_mail() {
+    let plan = gear::plan(&armoured("SHAMAN", 45, Some("Leather")), "Durnan");
+    let armour = rung(&plan, "armour");
+    assert_eq!(armour.what, "Mail armour");
+    assert_eq!(armour.standing, Standing::Due, "{armour:?}");
+}
+
+#[test]
+fn one_piece_of_the_new_armour_is_enough_to_stop_nagging() {
+    // The step change is realising the tier is open at all, not finishing the
+    // set. A player wearing one mail piece has noticed; the rest follows from
+    // ordinary levelling and does not need a coach.
+    let plan = gear::plan(&armoured("SHAMAN", 45, Some("Mail")), "Durnan");
+    assert_eq!(rung(&plan, "armour").standing, Standing::Met);
+}
+
+#[test]
+fn below_forty_the_armour_tier_is_context_rather_than_a_job() {
+    let plan = gear::plan(&armoured("SHAMAN", 30, Some("Leather")), "Durnan");
+    assert_eq!(
+        rung(&plan, "armour").standing,
+        Standing::NotYet { at_level: 40 }
+    );
+    assert!(plan.due().next().is_none(), "nothing to do about it yet");
+}
+
+#[test]
+fn each_class_is_told_about_the_tier_it_actually_unlocks() {
+    // A warrior can wear mail from level 1, so mail is not an event for them —
+    // plate is. Getting this backwards would have the tool congratulating a
+    // level 45 warrior for the mail they have been wearing since level 1.
+    let warrior = gear::plan(&armoured("WARRIOR", 45, Some("Mail")), "Karoh");
+    let rung_w = rung(&warrior, "armour");
+    assert_eq!(rung_w.what, "Plate armour");
+    assert_eq!(
+        rung_w.standing,
+        Standing::Due,
+        "mail does not satisfy a plate wearer past 40: {rung_w:?}"
+    );
+
+    let paladin = gear::plan(&armoured("PALADIN", 45, Some("Plate")), "Brannic");
+    assert_eq!(rung(&paladin, "armour").standing, Standing::Met);
+
+    // And a mage has no armour tier to unlock at all.
+    let mage = gear::plan(&armoured("MAGE", 45, Some("Cloth")), "Saelis");
+    assert!(
+        mage.milestones.iter().all(|m| m.line != "armour"),
+        "cloth is cloth forever: {:?}",
+        mage.milestones.iter().map(|m| m.what).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn two_ladders_report_two_rungs() {
+    // A hunter past 40 has both an armour tier and a ranged weapon to think
+    // about. They are separate ladders and both should be heard; the
+    // one-rung-per-ladder rule narrows within a line, never across them.
+    let plan = gear::plan(&armoured("HUNTER", 45, Some("Leather")), "Kazrin");
+    assert_eq!(rung(&plan, "armour").what, "Mail armour");
+    assert_eq!(rung(&plan, "ranged").what, "A ranged weapon");
+}
+
+#[test]
+fn a_shaman_is_no_longer_met_with_silence() {
+    // The gap this milestone was added to close: one of the launch four got
+    // nothing but the "this is silence, not a clean bill of health" caveat.
+    let plan = gear::plan(&armoured("SHAMAN", 1, None), "Durnan");
+    assert!(
+        !plan.milestones.is_empty(),
+        "a shaman has something to hear about"
+    );
+    assert!(
+        !plan.caveats.iter().any(|c| c.contains("silence")),
+        "and no longer the empty-table caveat: {:?}",
+        plan.caveats
     );
 }

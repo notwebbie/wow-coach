@@ -72,6 +72,33 @@ export class Session {
         skillUps: [], recipesKnown: false, outOfUsefulRecipes: false, notes: [] }
     ]);
   }
+  provisioning() {
+    // One of each interesting route, including the two that are easiest to
+    // render wrongly: the faction line, and a skill gap with real numbers.
+    return JSON.stringify({
+      supplies: [
+        { character: "Gravehexx", key: GRAVEHEXX, characterLevel: 14,
+          what: "A better wand", why: "Wand damage is the stat that matters before 30.",
+          neededByLevel: 13, overdue: true, needsPreparation: true,
+          route: { kind: "shortOfSkill", crafter: "Dardrin", recipe: "Greater Magic Wand",
+                   profession: "Enchanting", have: 60, need: 70, missing: [] },
+          source: "Warcraft Tavern", checkedForForever: true },
+        { character: "Vardril", key: VARDRIL, characterLevel: 8,
+          what: "A wand", why: "Wanding costs no mana.",
+          neededByLevel: 5, overdue: true, needsPreparation: false,
+          route: { kind: "rosterCrafter", crafter: "Dardrin", recipe: "Lesser Magic Wand",
+                   canMakeNow: 3, missing: [] },
+          source: "Warcraft Tavern", checkedForForever: true },
+        { character: "Kazrin", key: "7:forever|16:Classic Beta PvE|6:Kazrin", characterLevel: 12,
+          what: "A ranged weapon", why: "Nothing to open a fight with.",
+          neededByLevel: 1, overdue: true, needsPreparation: false,
+          route: { kind: "wrongFaction", crafter: "Dardrin", faction: "Alliance",
+                   recipe: "Lesser Magic Wand", missing: [] },
+          source: "Carried over from Classic", checkedForForever: false }
+      ],
+      caveats: ["No trade window has been opened for Dardrin's Enchanting, so which recipes they know is unknown rather than empty."]
+    });
+  }
   gear(key) {
     if (key === VARDRIL) {
       // Never captured: the page must say so rather than render a clean screen.
@@ -95,7 +122,7 @@ export class Session {
           fromLevel: 1, state: "unknowable",
           because: "a weapon is equipped that the game client had not loaded a description for, so it cannot be identified",
           atLevel: null,
-          source: "Carried over from Classic; not checked against a Forever source",
+          source: "Carried over from Classic",
           sourceReadOn: "2026-10-28", checkedForForever: false }
       ],
       equipmentKnown: true, caveats: []
