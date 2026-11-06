@@ -103,6 +103,7 @@ fn with_recipes(
             rank: Some(300),
             max_rank: Some(300),
             recipes: Some(recipes),
+            ..Default::default()
         },
     );
     record

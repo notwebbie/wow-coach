@@ -218,6 +218,65 @@ fn partial_captures_are_surfaced_not_swallowed() {
 }
 
 #[test]
+fn a_forever_recipe_cache_from_before_the_learned_filter_is_discarded() {
+    // The first live Forever capture listed every recipe in the profession,
+    // learned or not. A cache without learnedReported is that cache; one with
+    // it was filtered. Classic never reports the flag, so its absence there
+    // means nothing and the cache stays.
+    let source = r#"
+        WoWCoachCollectorDB = {
+            ["schemaVersion"] = 3,
+            ["characters"] = {
+                ["old"] = { ["name"] = "Corvin", ["gameFlavor"] = "forever",
+                    ["recipes"] = {
+                        ["Tailoring"] = { ["rank"] = 16, ["recipes"] = {
+                            { ["name"] = "Mooncloth", ["difficulty"] = "optimal" } } },
+                        ["Enchanting"] = { ["rank"] = 2, ["learnedReported"] = true,
+                            ["recipes"] = { { ["name"] = "Runed Copper Rod" } } },
+                    } },
+                ["gone"] = { ["name"] = "Saelis", ["gameFlavor"] = "forever",
+                    ["recipes"] = {
+                        ["Alchemy"] = { ["recipes"] = { { ["name"] = "Flask of Titans" } } },
+                    } },
+                ["tbc"] = { ["name"] = "Gravehexx", ["gameFlavor"] = "tbc_classic",
+                    ["recipes"] = {
+                        ["Tailoring"] = { ["recipes"] = { { ["name"] = "Bolt of Linen Cloth" } } },
+                    } },
+            },
+        }
+    "#;
+    let loaded = collector::load(source).unwrap();
+    let chars = &loaded.db.characters;
+
+    let corvin = chars["old"]
+        .recipes
+        .as_ref()
+        .expect("the filtered cache survives");
+    assert!(
+        !corvin.contains_key("Tailoring"),
+        "the unfiltered cache is dropped"
+    );
+    assert_eq!(corvin["Enchanting"].learned_reported, Some(true));
+    assert_eq!(corvin["Enchanting"].recipes.as_ref().map(Vec::len), Some(1));
+
+    assert!(
+        chars["gone"].recipes.is_none(),
+        "no caches left means not captured"
+    );
+    assert!(chars["tbc"]
+        .recipes
+        .as_ref()
+        .unwrap()
+        .contains_key("Tailoring"));
+
+    assert!(loaded
+        .notices
+        .iter()
+        .any(|n| n.contains("Corvin: Tailoring recipes") && n.contains("open Tailoring")));
+    assert!(!loaded.notices.iter().any(|n| n.contains("Gravehexx")));
+}
+
+#[test]
 fn rejects_anything_outside_the_subset() {
     // The whole point is that this is not an interpreter.
     for (source, description) in [

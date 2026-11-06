@@ -62,6 +62,7 @@ fn with_profession(
         rank: Some(rank),
         max_rank: Some(max_rank),
         recipes: Some((0..recipes).map(|_| Recipe::default()).collect()),
+        ..Default::default()
     };
     record
         .recipes

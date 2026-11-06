@@ -96,6 +96,7 @@ fn enchanter(
                     })
                     .collect(),
             ),
+            ..Default::default()
         },
     );
     record.recipes = Some(cache);

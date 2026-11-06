@@ -690,6 +690,12 @@ pub struct ProfessionRecipes {
     pub max_rank: Option<u16>,
     #[serde(deserialize_with = "empty_table_as_list")]
     pub recipes: Option<Vec<Recipe>>,
+    /// Whether the client said which recipes are learned. Modern clients
+    /// only: their trade-skill window lists the whole profession, and the
+    /// collector keeps just the learned ones. Absent on a Forever cache means
+    /// it predates that filter and lists every recipe in the profession, so
+    /// the loader discards it — see `drop_unfiltered_recipe_caches`.
+    pub learned_reported: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
@@ -790,6 +796,52 @@ pub struct Loaded {
     pub notices: Vec<String>,
 }
 
+/// The flavor whose trade-skill window lists unlearned recipes.
+const MODERN_RECIPE_FLAVOR: &str = "forever";
+
+/// Discard Forever recipe caches written before the collector filtered out
+/// unlearned recipes.
+///
+/// Before 6 November 2026 the collector stored every recipe the modern
+/// trade-skill window listed, learned or not, each rated "optimal" — the first
+/// live capture had a Tailoring 16 character "knowing" Mooncloth. Such a cache
+/// is not stale, it is wrong, so keeping it would put recipes the character
+/// cannot make into every crafting and provisioning answer. Dropping it turns
+/// the profession back into "recipes not captured", which every reader
+/// already handles and which the player fixes by opening the window once.
+///
+/// Only Forever is touched: the Classic clients enumerate known recipes and
+/// never report `learnedReported`, so its absence there means nothing.
+fn drop_unfiltered_recipe_caches(db: &mut CollectorDb) -> Vec<String> {
+    let mut notices = Vec::new();
+    for (key, record) in db.characters.iter_mut() {
+        if record.game_flavor.as_deref() != Some(MODERN_RECIPE_FLAVOR) {
+            continue;
+        }
+        let name = record.name.clone().unwrap_or_else(|| key.clone());
+        let Some(caches) = record.recipes.as_mut() else {
+            continue;
+        };
+        let stale: Vec<String> = caches
+            .iter()
+            .filter(|(_, cache)| cache.learned_reported.is_none())
+            .map(|(profession, _)| profession.clone())
+            .collect();
+        for profession in &stale {
+            caches.remove(profession);
+            notices.push(format!(
+                "{name}: {profession} recipes were captured by an older collector that \
+                 listed unlearned recipes too, so they were ignored — open {profession} \
+                 once to recapture"
+            ));
+        }
+        if caches.is_empty() {
+            record.recipes = None;
+        }
+    }
+    notices
+}
+
 /// Read a collector SavedVariables file.
 pub fn load(input: &str) -> Result<Loaded, LoadError> {
     let globals = lua::parse_saved_variables(input).map_err(LoadError::Syntax)?;
@@ -807,7 +859,8 @@ fn load_value(value: &LuaValue) -> Result<Loaded, LoadError> {
         ))
     })?;
 
-    let mut notices = Vec::new();
+    let mut db = db;
+    let mut notices = drop_unfiltered_recipe_caches(&mut db);
     if let Some(version) = db.schema_version {
         if version > KNOWN_SCHEMA_VERSION {
             notices.push(format!(
