@@ -521,6 +521,15 @@ of the game rather than a design choice. Trade skill and craft data is only
 readable while the relevant window is open, so the collector scrapes it when the
 player opens a profession and cannot refresh it on demand.
 
+**Only learned recipes are recorded.** The modern client's trade-skill window
+lists every recipe in the profession, learned or not, and rates an unlearned
+one difficulty 0 ("optimal"). The collector drops any recipe the client flags
+`learned = false`. `learnedReported` (modern clients only) says whether the
+client supplied that flag at all: `true` means the list is filtered, absent
+means it could not be. A Forever cache **without** `learnedReported` was
+written before 6 November 2026 and lists the whole profession — readers
+should not treat it as known recipes.
+
 Readers must therefore treat `recipes` as potentially stale, must compare its
 own `capturedAt` against the record's, and must not infer that a profession is
 unknown because it is absent. The Burning Crusade client keeps Enchanting on a

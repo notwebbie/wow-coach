@@ -208,6 +208,7 @@ WoWCoachCollectorDB = {
 			["recipes"] = {
 				["Alchemy"] = {
 					["capturedAt"] = 1700000000,
+					["learnedReported"] = true,
 					["maxRank"] = 300,
 					["rank"] = 225,
 					["recipes"] = {

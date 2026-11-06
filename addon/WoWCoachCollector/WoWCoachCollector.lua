@@ -1166,10 +1166,23 @@ local function captureTradeSkillUI()
     local ids = C_TradeSkillUI.GetAllRecipeIDs()
     if type(ids) ~= "table" or #ids == 0 then return nil end
 
+    -- `GetAllRecipeIDs` lists every recipe the profession HAS, not the ones
+    -- the character knows — the modern trade-skill window shows unlearned
+    -- recipes too, greyed out. The first live Forever capture recorded a
+    -- Tailoring 16 character as knowing Mooncloth, every bag and every robe,
+    -- all rated "optimal" because an unlearned recipe reports difficulty 0.
+    -- `learned` is the client's own flag; a recipe it marks false is dropped.
+    --
+    -- A recipe with no `learned` field at all is kept, because absent is not
+    -- false. `learnedReported` records whether the client supplied the flag
+    -- for any recipe, so a reader can tell a filtered list from one the client
+    -- gave no way to filter: "it said none" versus "it said nothing".
     local entries = {}
+    local learnedReported = false
     for _, recipeID in ipairs(ids) do
         local recipe = C_TradeSkillUI.GetRecipeInfo(recipeID)
-        if type(recipe) == "table" and recipe.name then
+        if type(recipe) == "table" and recipe.learned ~= nil then learnedReported = true end
+        if type(recipe) == "table" and recipe.name and recipe.learned ~= false then
             local entry = {
                 name = recipe.name, spellID = recipeID,
                 difficulty = relativeDifficultyName(recipe.relativeDifficulty),
@@ -1206,9 +1219,12 @@ local function captureTradeSkillUI()
             entries[#entries + 1] = entry
         end
     end
-    if #entries == 0 then return nil end
+    -- Knowing nothing yet is a real answer once the client has said which
+    -- recipes are learned; returning nil would leave an older cache standing.
+    if #entries == 0 and not learnedReported then return nil end
     return info.professionName,
-        { rank = info.skillLevel, maxRank = info.maxSkillLevel, recipes = entries }
+        { rank = info.skillLevel, maxRank = info.maxSkillLevel, recipes = entries,
+          learnedReported = learnedReported }
 end
 
 local function captureTradeSkill()

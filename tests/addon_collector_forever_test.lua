@@ -285,20 +285,27 @@ function C_TradeSkillUI.GetBaseProfessionInfo()
 end
 function C_TradeSkillUI.GetAllRecipeIDs()
     if not trade_ready then return {} end
-    return { 2330, 2337, 9999 }
+    return { 2330, 2337, 3001, 9999 }
 end
 -- relativeDifficulty is Enum.TradeskillRelativeDifficulty: an INTEGER, where
 -- the Classic path returns a word. This stub said "optimal" until the live
 -- beta proved otherwise, and that lie is why the harness passed while the real
 -- client produced a file the reader rejected outright. 0 Optimal, 1 Medium,
 -- 2 Easy, 3 Trivial; 99 stands in for a value a later client might add.
-local recipe_difficulty = { [2330] = 0, [2337] = 3, [9999] = 99 }
+local recipe_difficulty = { [2330] = 0, [2337] = 3, [3001] = 0, [9999] = 99 }
+-- GetAllRecipeIDs lists the whole profession, learned or not. 3001 is a recipe
+-- the character has not learned: the live client rates it difficulty 0, which
+-- is why the first Forever capture showed Mooncloth as an "optimal" recipe at
+-- Tailoring 16. 9999 carries no `learned` field at all, as a client that never
+-- reports it would, and must be kept.
+local recipe_learned = { [2330] = true, [2337] = true, [3001] = false }
 function C_TradeSkillUI.GetRecipeInfo(recipeID)
     local names = { [2330] = "Minor Healing Potion", [2337] = "Lesser Healing Potion",
-        [9999] = "Recipe From A Later Client" }
+        [3001] = "Elixir Not Yet Learned", [9999] = "Recipe From A Later Client" }
     return {
         name = names[recipeID],
         relativeDifficulty = recipe_difficulty[recipeID],
+        learned = recipe_learned[recipeID],
         categoryID = 1,
     }
 end
@@ -552,6 +559,9 @@ check(by_id[2330] and type(by_id[2330].difficulty) == "string",
 -- Absent already means "not captured" everywhere here, and the reader treats
 -- an unrated recipe as one that might still raise the skill.
 check(by_id[9999] ~= nil, "an unknown difficulty must not drop the recipe itself")
+check(by_id[3001] == nil, "a recipe the client marks unlearned must not be captured as known")
+check(recipes and recipes.Alchemy and recipes.Alchemy.learnedReported == true,
+    "the capture must say the client reported which recipes are learned")
 check(by_id[9999] and by_id[9999].difficulty == nil,
     "an unrecognised enum value becomes absent rather than a guess")
 
