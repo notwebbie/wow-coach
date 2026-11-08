@@ -39,8 +39,8 @@ function GetRealmName() return world.realm end
 function UnitClass(unit) assert(unit == "player") return "Mage", "MAGE", 8 end
 function UnitRace(unit) assert(unit == "player") return "Troll", "Troll", 8 end
 function UnitFactionGroup(unit) assert(unit == "player") return "Horde" end
-function GetRealZoneText() return "Durotar" end
-function GetSubZoneText() return "Valley of Trials" end
+function GetRealZoneText() return world.zone or "Durotar" end
+function GetSubZoneText() return world.subzone or "Valley of Trials" end
 function GetBindLocation() return "Sen'jin Village" end
 function UnitLevel(unit) assert(unit == "player") return world.level end
 function UnitXP(unit) return world.xp end
@@ -609,6 +609,69 @@ check(survived and survived.trees[3].talents == nil, "no partial detail stored w
 C_Traits.GetNodeInfo = realGetNodeInfo
 collector.capture()
 check(record().talents.trees[3].talents ~= nil, "detail returns once the node API works again")
+
+--------------------------------------------------------------------------------
+-- Hearth, then an instant logout
+--
+-- Tovin, 8 November: hearthed from Frostmane Hold to the Thunderbrew inn and
+-- logged out at once. Arriving queued a full capture behind the throttle, inn
+-- logout is instant, and the logout guard dropped it -- so the file said he
+-- was still in the cave and not resting. Same zone both ends, so
+-- ZONE_CHANGED_NEW_AREA never fired either.
+--------------------------------------------------------------------------------
+
+local saved_now, saved_money = world.now, world.money
+world.zone, world.subzone, world.resting = "Durotar", "Burning Blade Coven", false
+frame:Fire("QUEST_LOG_UPDATE")
+frame:Tick(10)
+check(record().subZone == "Burning Blade Coven" and record().isResting == false,
+    "out in the field, not resting")
+local field_capture = record().capturedAt
+
+-- The hearth lands: same zone, new subzone, now resting. Out at once.
+world.now = world.now + 30
+world.subzone, world.resting = "Razor Hill", true
+frame:Fire("ZONE_CHANGED")
+frame:Fire("PLAYER_UPDATE_RESTING")
+frame:Fire("PLAYER_LOGOUT")
+frame:Tick(10)
+check(record().subZone == "Razor Hill", "the subzone the hearth landed in must survive an instant logout")
+check(record().isResting == true, "and so must the rest state")
+check(record().vitalsAt == world.now, "the vitals say when they were read")
+check(record().capturedAt == field_capture,
+    "while the full capture the logout dropped stays dropped -- bags are not read at logout")
+
+-- A torn-down client must not write its zeros over the last good reading.
+local saved_max = world.max_xp
+world.max_xp, world.resting, world.subzone = 0, false, ""
+collector.captureVitals()
+check(record().isResting == true and record().subZone == "Razor Hill",
+    "maxXP 0 means the player is gone; nothing is written")
+check(record().maxXP == saved_max, "the last good maxXP is kept")
+world.max_xp, world.resting, world.subzone = saved_max, true, "Razor Hill"
+
+-- Across a loading screen the rest event can arrive while the client is
+-- still leaving; the vitals are read a second after arriving instead.
+world.now = world.now + 30
+frame:Fire("PLAYER_ENTERING_WORLD")
+frame:Tick(10)
+world.now = world.now + 30
+world.subzone, world.resting = "Valley of Trials", false
+frame:Fire("PLAYER_LEAVING_WORLD")
+frame:Fire("PLAYER_UPDATE_RESTING")
+check(record().isResting == true, "nothing is read while leaving the world")
+world.subzone, world.resting = "Razor Hill", true
+frame:Fire("PLAYER_ENTERING_WORLD")
+frame:Tick(1.5)
+frame:Fire("PLAYER_LOGOUT")
+check(record().vitalsAt == world.now and record().subZone == "Razor Hill",
+    "the vitals land a second after a loading screen, before any logout")
+
+-- Back to the state the fixture expects.
+world.now, world.money = saved_now, saved_money
+world.zone, world.subzone, world.resting = nil, nil, true
+frame:Fire("PLAYER_ENTERING_WORLD")
+frame:Tick(10)
 
 --------------------------------------------------------------------------------
 

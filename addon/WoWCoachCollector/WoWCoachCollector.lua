@@ -23,6 +23,10 @@
 local ADDON_NAME = ...
 local SCHEMA_VERSION = 3
 local THROTTLE_SECONDS = 5
+-- After a loading screen, how long to wait before reading the vitals. Long
+-- enough for the client to settle where it put the player, short enough to
+-- land before anyone can reach the logout button.
+local VITALS_DELAY_SECONDS = 1
 
 local collector = {}
 
@@ -1316,6 +1320,49 @@ local function currentRecord()
     return record, flavor, interface, realm, name
 end
 
+-- Where the character is and what it is carrying in the cheap, scalar sense:
+-- location, rest, money, experience. Written by every full capture, and also
+-- on its own, at once, whenever one of them changes -- see VITALS_EVENTS.
+--
+-- The split exists because of one sequence: hearth into an inn, log out on
+-- the spot. Arriving queues a full capture behind the throttle, logging out in
+-- a rest area is instant, and the logout guard rightly drops the queued
+-- capture. The file was left saying the character was still in the field and
+-- not resting (Tovin, 8 November). These fields are a handful of calls that
+-- cannot be half torn down the way bag data can, so they need not wait.
+--
+-- Returns false, writing nothing, when the client has already torn the player
+-- down. Observed by the probe at PLAYER_LOGOUT: UnitXPMax and UnitXP return 0
+-- and the rest state goes nil, which would store "0 XP, not resting" as a
+-- fact. maxXP is 0 for no living character, so it is the tell.
+local function captureVitals(record)
+    local maxXP = UnitXPMax and UnitXPMax("player")
+    if UnitXPMax and (maxXP == nil or maxXP == 0) then return false end
+
+    record.level = UnitLevel and UnitLevel("player")
+    local zone = GetRealZoneText and GetRealZoneText()
+    if zone and zone ~= "" then record.zone = zone end
+    -- An empty subzone is a real answer -- open ground with no named area --
+    -- so it is stored as given, unlike an empty zone, which no character has.
+    record.subZone = GetSubZoneText and GetSubZoneText()
+    record.bindLocation = GetBindLocation and GetBindLocation()
+    if IsResting then record.isResting = IsResting() and true or false end
+    record.moneyCopper = GetMoney and GetMoney()
+    record.xp = UnitXP and UnitXP("player")
+    record.maxXP = maxXP
+    -- Returns nil when the character has no rested bonus. Stored as 0 in that
+    -- case so an absent field always means "not captured", never "not rested".
+    if GetXPExhaustion then record.restedXP = GetXPExhaustion() or 0 end
+    record.vitalsAt = time()
+    return true
+end
+
+function collector.captureVitals()
+    local record = currentRecord()
+    if not record then return end
+    captureVitals(record)
+end
+
 function collector.capture()
     local record, flavor, interface, realm, name = currentRecord()
     if not record then return end
@@ -1336,22 +1383,12 @@ function collector.capture()
     record.interfaceVersion = interface
     record.realm = realm
     record.name = name
-    record.level = UnitLevel and UnitLevel("player")
     record.class = class
     record.classID = classID
     record.race = race
     record.raceID = raceID
     record.faction = UnitFactionGroup and UnitFactionGroup("player")
-    record.zone = GetRealZoneText and GetRealZoneText()
-    record.subZone = GetSubZoneText and GetSubZoneText()
-    record.bindLocation = GetBindLocation and GetBindLocation()
-    if IsResting then record.isResting = IsResting() and true or false end
-    record.moneyCopper = GetMoney and GetMoney()
-    record.xp = UnitXP and UnitXP("player")
-    record.maxXP = UnitXPMax and UnitXPMax("player")
-    -- Returns nil when the character has no rested bonus. Stored as 0 in that
-    -- case so an absent field always means "not captured", never "not rested".
-    if GetXPExhaustion then record.restedXP = GetXPExhaustion() or 0 end
+    captureVitals(record)
 
     local skills, skillsComplete = captureSkills()
     if skills then
@@ -1447,11 +1484,24 @@ local frame = CreateFrame("Frame")
 local SNAPSHOT_EVENTS = {
     "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "PLAYER_LEVEL_UP", "PLAYER_MONEY",
     "PLAYER_XP_UPDATE", "PLAYER_UPDATE_RESTING", "UPDATE_EXHAUSTION",
-    "ZONE_CHANGED_NEW_AREA", "QUEST_LOG_UPDATE", "BAG_UPDATE_DELAYED",
+    "ZONE_CHANGED_NEW_AREA", "ZONE_CHANGED", "ZONE_CHANGED_INDOORS",
+    "QUEST_LOG_UPDATE", "BAG_UPDATE_DELAYED",
     "SKILL_LINES_CHANGED", "CHARACTER_POINTS_CHANGED", "TRAIT_CONFIG_UPDATED",
     "LEARNED_SPELL_IN_TAB", "SPELLS_CHANGED",
     "GAME_RULES_CHANGED", "UNIT_PET", "UNIT_HAPPINESS",
 }
+
+-- Events after which the vitals are written at once rather than behind the
+-- throttle. They still queue a full capture as well. ZONE_CHANGED and
+-- ZONE_CHANGED_INDOORS are here because a hearth inside one zone -- the field
+-- to that zone's inn -- never fires ZONE_CHANGED_NEW_AREA at all.
+local VITALS_EVENTS = {
+    "PLAYER_UPDATE_RESTING", "UPDATE_EXHAUSTION", "PLAYER_XP_UPDATE",
+    "PLAYER_LEVEL_UP", "PLAYER_MONEY",
+    "ZONE_CHANGED_NEW_AREA", "ZONE_CHANGED", "ZONE_CHANGED_INDOORS",
+}
+local vitalsEvent = {}
+for _, event in ipairs(VITALS_EVENTS) do vitalsEvent[event] = true end
 
 -- The client is about to stop answering truthfully. PLAYER_LEAVING_WORLD fires
 -- before every loading screen as well as at logout, so this window opens on a
@@ -1492,6 +1542,8 @@ for _, event in ipairs(BANK_EVENTS) do register(event) end
 for _, event in ipairs(LEAVING_EVENTS) do register(event) end
 
 local pending, sinceFlush = false, 0
+-- Seconds until a delayed vitals read is due, or nil when none is.
+local vitalsDue = nil
 -- Whether the bank window is open, and so whether the bank can be read.
 local bankIsOpen = false
 -- Between leaving the world and arriving back in it. Nothing is captured in
@@ -1505,6 +1557,7 @@ frame:SetScript("OnEvent", function(_, event, unit)
         -- how a burst of BAG_UPDATE_DELAYED from the loot window could write a
         -- logout snapshot.
         leaving, pending, sinceFlush, bankIsOpen = true, false, 0, false
+        vitalsDue = nil
         return
     end
     if event == "PLAYER_ENTERING_WORLD" then leaving = false end
@@ -1529,14 +1582,19 @@ frame:SetScript("OnEvent", function(_, event, unit)
     end
     -- PLAYER_XP_UPDATE carries the unit that changed; ignore everyone else.
     if event == "PLAYER_XP_UPDATE" and unit ~= "player" then return end
+    if vitalsEvent[event] then collector.captureVitals() end
     -- Arriving in the world is a reason to capture, not a moment to. The
     -- client fires these as the loading screen lifts, before bag and item data
     -- have finished arriving, so the capture is queued behind the full
     -- throttle rather than taken on the spot. Restarting the clock is
     -- deliberate: a capture already queued from before the loading screen
     -- should wait too.
+    -- The vitals get their own short delay: the rest and zone events that
+    -- would normally carry them can fire while the loading screen is still up,
+    -- inside the leaving window, and be ignored.
     if event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then
         pending, sinceFlush = true, 0
+        vitalsDue = VITALS_DELAY_SECONDS
         return
     end
     pending = true
@@ -1544,7 +1602,15 @@ end)
 
 if frame.SetScript then
     frame:SetScript("OnUpdate", function(_, elapsed)
-        if not pending or leaving then return end
+        if leaving then return end
+        if vitalsDue then
+            vitalsDue = vitalsDue - (elapsed or 0)
+            if vitalsDue <= 0 then
+                vitalsDue = nil
+                collector.captureVitals()
+            end
+        end
+        if not pending then return end
         sinceFlush = sinceFlush + (elapsed or 0)
         if sinceFlush < THROTTLE_SECONDS then return end
         sinceFlush = 0

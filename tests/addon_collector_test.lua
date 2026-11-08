@@ -714,15 +714,22 @@ frame:Tick(10)
 check(record().moneyCopper == 333333, "and nothing after logout")
 
 -- 5. Arriving back defers past the loading screen, then captures normally.
+-- The vitals (location, rest, money, XP) follow a second after arriving, ahead
+-- of the full capture, so an instant logout in an inn cannot lose them.
 torn_down = false
+local before_arrival = world.now
+world.now = world.now + 100
 frame:Fire("PLAYER_ENTERING_WORLD")
 check(record().moneyCopper == 333333, "entering the world must not capture on the spot")
 frame:Tick(2)
-check(record().moneyCopper == 333333, "nor before the throttle has run")
+check(record().moneyCopper == 444444, "the vitals follow a second after arriving")
+check(record().vitalsAt == world.now, "and say when they were read")
+check(record().capturedAt == before_arrival, "but the full capture still waits for the throttle")
 frame:Tick(5)
-check(record().moneyCopper == 444444, "a capture must follow once the loading screen is behind it")
+check(record().capturedAt == world.now, "a full capture must follow once the loading screen is behind it")
 check(linen_count() == 32, "with the bags read properly again")
--- Put the money back where the fixture expects it.
+-- Put the money and the clock back where the fixture expects them.
+world.now = before_arrival
 world.money = 222222
 frame:Fire("PLAYER_MONEY")
 frame:Tick(10)

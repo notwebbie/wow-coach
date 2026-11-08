@@ -2,7 +2,7 @@
 ## Title: WoW Coach Collector
 ## Notes: Local-only character snapshots for WoW Coach. Schema v3, Classic and Forever.
 ## Author: WoW Coach contributors
-## Version: 0.4.0
+## Version: 0.4.1
 ## SavedVariables: WoWCoachCollectorDB
 ## X-Category: Data Export
 ## X-License: MIT

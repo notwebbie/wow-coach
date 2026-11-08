@@ -291,6 +291,7 @@ WoWCoachCollectorDB = {
 				},
 				["unspentPoints"] = 2,
 			},
+			["vitalsAt"] = 1700000000,
 			["xp"] = 3210,
 			["zone"] = "Test Zone",
 		},

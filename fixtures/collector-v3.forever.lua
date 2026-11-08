@@ -330,6 +330,7 @@ WoWCoachCollectorDB = {
 				},
 				["unspentPoints"] = 3,
 			},
+			["vitalsAt"] = 1700000000,
 			["xp"] = 5600,
 			["zone"] = "Durotar",
 		},

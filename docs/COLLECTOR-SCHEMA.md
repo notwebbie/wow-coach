@@ -117,6 +117,21 @@ collector predates without waiting for an addon release.
 | `xp`, `maxXP` | number | |
 | `restedXP` | number | `0` when not rested; absent when not captured |
 | `moneyCopper` | number | |
+| `vitalsAt` | number | Unix epoch seconds when the fields above were last read. Optional — absent from captures before collector 0.4.1 |
+
+**The fields in this table can be newer than the rest of the record.** They
+are written by every full capture, and also on their own, at once, whenever
+the rest state, zone, subzone, money or XP changes, and a second after every
+loading screen. That is because a full capture waits five seconds and logout
+drops it: hearth into an inn and log out on the spot, and before 0.4.1 the
+file said the character was still in the field and not resting.
+
+So `vitalsAt` is never earlier than `capturedAt`, and can be later. A reader
+projecting rested XP should project from `vitalsAt` when present, since that
+is when `restedXP` was read; everything else in the record is as of
+`capturedAt`. Like every other capture, the vitals refuse to write while the
+client is tearing down — `maxXP` of 0 is the tell — so they are never the
+false zeros the probe saw at `PLAYER_LOGOUT`.
 
 ### Skills
 
