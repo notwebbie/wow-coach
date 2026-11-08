@@ -794,3 +794,60 @@ fn the_live_stub_shape_round_trips() {
     assert_eq!(record.professions_returned, Some(0));
     assert!(!record.profession_list_is_usable());
 }
+
+// ---------------------------------------------------------------------------
+// vitalsAt: collector 0.4.1 writes location, rest, money and XP on their own,
+// ahead of the throttled full capture.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn vitals_read_after_the_full_capture_are_when_the_character_was_last_seen() {
+    // Tovin, 8 November: hearth into an inn, log out at once. The full capture
+    // was dropped at logout; the vitals were not.
+    let record = wow_coach_core::collector::CharacterRecord {
+        captured_at: Some(1_000),
+        vitals_at: Some(1_030),
+        ..Default::default()
+    };
+    assert_eq!(record.observed_at(), Some(1_030));
+}
+
+#[test]
+fn a_capture_from_before_vitals_existed_is_seen_when_it_was_captured() {
+    let record = wow_coach_core::collector::CharacterRecord {
+        captured_at: Some(1_000),
+        ..Default::default()
+    };
+    assert_eq!(record.observed_at(), Some(1_000));
+}
+
+#[test]
+fn vitals_that_trail_the_full_capture_cannot_move_time_backwards() {
+    // The collector never writes this, but a hand-edited or merged file could.
+    let record = wow_coach_core::collector::CharacterRecord {
+        captured_at: Some(1_000),
+        vitals_at: Some(900),
+        ..Default::default()
+    };
+    assert_eq!(record.observed_at(), Some(1_000));
+}
+
+#[test]
+fn vitals_at_is_read_from_the_file() {
+    let text = r#"WoWCoachCollectorDB = {
+["schemaVersion"] = 3,
+["characters"] = {
+["7:forever|5:Realm|5:Tovin"] = {
+["capturedAt"] = 1000,
+["vitalsAt"] = 1030,
+["subZone"] = "Thunderbrew Distillery",
+["isResting"] = true,
+},
+},
+}
+"#;
+    let loaded = wow_coach_core::collector::load(text).expect("parses");
+    let record = loaded.db.characters.values().next().expect("one character");
+    assert_eq!(record.vitals_at, Some(1_030));
+    assert_eq!(record.observed_at(), Some(1_030));
+}

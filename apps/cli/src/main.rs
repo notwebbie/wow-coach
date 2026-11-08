@@ -584,7 +584,7 @@ fn gather(file: Option<&Path>) -> Result<Gathered, String> {
                     slot.insert(record);
                 }
                 std::collections::btree_map::Entry::Occupied(mut slot) => {
-                    if record.captured_at > slot.get().captured_at {
+                    if record.observed_at() > slot.get().observed_at() {
                         slot.insert(record);
                     }
                 }

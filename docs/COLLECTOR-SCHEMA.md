@@ -126,10 +126,11 @@ loading screen. That is because a full capture waits five seconds and logout
 drops it: hearth into an inn and log out on the spot, and before 0.4.1 the
 file said the character was still in the field and not resting.
 
-So `vitalsAt` is never earlier than `capturedAt`, and can be later. A reader
-projecting rested XP should project from `vitalsAt` when present, since that
-is when `restedXP` was read; everything else in the record is as of
-`capturedAt`. Like every other capture, the vitals refuse to write while the
+So `vitalsAt` is never earlier than `capturedAt`, and can be later. The core
+reads it through `CharacterRecord::observed_at()` -- the later of the two --
+for anything about when the character was last seen: history snapshots, the
+page's staleness line, and choosing between two files holding one character.
+Bags, quests and gear are as of `capturedAt`. Like every other capture, the vitals refuse to write while the
 client is tearing down — `maxXP` of 0 is the tell — so they are never the
 false zeros the probe saw at `PLAYER_LOGOUT`.
 

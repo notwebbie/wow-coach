@@ -169,3 +169,30 @@ fn snapshots_round_trip_through_the_store_format() {
     assert!(problems.is_empty());
     assert_eq!(history.snapshots()[0], original);
 }
+
+#[test]
+fn a_vitals_only_update_is_a_new_reading_not_a_duplicate() {
+    // Hearth, instant logout: the bags are as of the last full capture but
+    // the zone and rest moved on. Keyed on the full capture alone, the second
+    // reading would be dropped as the same capture.
+    use wow_coach_core::collector::CharacterRecord;
+    let in_the_field = CharacterRecord {
+        captured_at: Some(1_000),
+        vitals_at: Some(1_000),
+        zone: Some("Dun Morogh".to_string()),
+        is_resting: Some(false),
+        ..Default::default()
+    };
+    let at_the_inn = CharacterRecord {
+        vitals_at: Some(1_030),
+        is_resting: Some(true),
+        ..in_the_field.clone()
+    };
+
+    let mut history = History::default();
+    assert!(history.record(Snapshot::from_record("k:Tovin", &in_the_field).unwrap()));
+    let arrival = Snapshot::from_record("k:Tovin", &at_the_inn).unwrap();
+    assert_eq!(arrival.captured_at, 1_030, "stamped when last seen");
+    assert!(history.record(arrival), "the arrival is a new reading");
+    assert_eq!(history.len(), 2);
+}

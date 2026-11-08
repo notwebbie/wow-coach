@@ -145,6 +145,13 @@ pub struct CharacterRecord {
     /// Zero when not rested; absent when not captured. The difference matters.
     #[serde(rename = "restedXP")]
     pub rested_xp: Option<u64>,
+    /// Unix epoch seconds at which the fields above -- level, location, rest,
+    /// money, XP -- were last read. Collector 0.4.1 writes them on their own
+    /// whenever they change, ahead of the throttled full capture, so this can
+    /// be later than `captured_at`: a hearth and an instant logout leaves the
+    /// arrival here and the bags as of the last full capture. Absent before
+    /// 0.4.1. Use [`CharacterRecord::observed_at`] rather than reading it.
+    pub vitals_at: Option<i64>,
 
     /// Every spell the character knows, by id. Absent means not captured —
     /// never "knows nothing".
@@ -290,6 +297,20 @@ pub struct ProfessionSlot {
 }
 
 impl CharacterRecord {
+    /// When the character was last seen: the later of the full capture and
+    /// the vitals read. This is the time to show next to where a character is
+    /// and how rested, and the time two readings of one character should be
+    /// told apart by. Bags, quests and gear are as of `captured_at` only.
+    ///
+    /// The later of the two, never simply `vitals_at`, so a file where the
+    /// vitals somehow trail the full capture cannot move time backwards.
+    pub fn observed_at(&self) -> Option<i64> {
+        match (self.captured_at, self.vitals_at) {
+            (Some(full), Some(vitals)) => Some(full.max(vitals)),
+            (full, vitals) => full.or(vitals),
+        }
+    }
+
     /// Whether the profession list may be treated as the client's answer.
     ///
     /// A non-empty list always may. An **empty** one may only when the client

@@ -265,7 +265,8 @@ struct CharacterView {
     flavor: Option<String>,
     /// `unset`, `active`, `bank`, `parked` or `reserved`.
     role: &'static str,
-    /// Unix epoch seconds of the capture, so the page can say how stale it is.
+    /// Unix epoch seconds the character was last seen, so the page can say
+    /// how stale it is. The later of the full capture and the vitals read.
     captured_at: Option<i64>,
 }
 
@@ -283,7 +284,8 @@ impl From<&roster::RosterEntry<'_>> for CharacterView {
             zone: record.zone.clone(),
             flavor: record.game_flavor.clone(),
             role: entry.role.label(),
-            captured_at: record.captured_at,
+            // The page shows this beside the zone, which is a vital.
+            captured_at: record.observed_at(),
         }
     }
 }

@@ -42,7 +42,11 @@ pub struct Snapshot {
 
 impl Snapshot {
     pub fn from_record(key: &str, record: &CharacterRecord) -> Option<Self> {
-        let captured_at = record.captured_at?;
+        // When last seen, not when the bags were last read. A hearth and an
+        // instant logout changes only the vitals; keyed on `captured_at` that
+        // reading would be taken for a duplicate and dropped -- and every
+        // field trended here except the quest and bag counts is a vital.
+        let captured_at = record.observed_at()?;
         Some(Self {
             key: key.to_string(),
             name: record.display_name(key).to_string(),
