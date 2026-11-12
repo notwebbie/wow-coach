@@ -667,6 +667,101 @@ frame:Fire("PLAYER_LOGOUT")
 check(record().vitalsAt == world.now and record().subZone == "Razor Hill",
     "the vitals land a second after a loading screen, before any logout")
 
+
+--------------------------------------------------------------------------------
+-- The modern client's containers: reagent bag, keyring, bank tabs
+--
+-- Numbering checked against Blizzard's Forever UI source (1.60.1): -1 is the
+-- keyring, 5 the worn reagent bag, and the bank is a set of purchased tabs from
+-- 6 up, listed by C_Bank. The Classic list read the keyring as the bank and the
+-- reagent bag as a bank bag, and never saw the reagent bag among the bags at
+-- all (Tovin, 12 November).
+--------------------------------------------------------------------------------
+
+local saved_enum_bagindex, saved_enum_banktype = Enum.BagIndex, Enum.BankType
+Enum.BagIndex = { Accountbanktab = -3, Characterbanktab = -2, Keyring = -1, Backpack = 0,
+                  Bag_1 = 1, Bag_2 = 2, Bag_3 = 3, Bag_4 = 4, ReagentBag = 5,
+                  CharacterBankTab_1 = 6, AccountBankTab_1 = 15 }
+Enum.BankType = { Character = 0, Guild = 1, Account = 2 }
+Constants = { InventoryConstants = { NumBagSlots = 4, NumReagentBagSlots = 1 } }
+C_Bank = {}
+function C_Bank.FetchPurchasedBankTabIDs(bankType)
+    if bankType == 0 then return { 6 } end
+    if bankType == 2 then return { 15 } end
+    return {}
+end
+
+-- A Linen Reagent Bag with Motes and Linen, a keyring with a key, one bank
+-- tab, and an account tab that is not this character's to count.
+bag_slots[5], bag_items[5] = 8, { [1] = { 10939, 20 }, [2] = { 2589, 40 } }
+bag_slots[-1], bag_items[-1] = 32, { [1] = { 5396, 1 } }
+bag_slots[6], bag_items[6] = 48, { [1] = { 2592, 7 } }
+bag_slots[15], bag_items[15] = 98, { [1] = { 2589, 500 } }
+
+local function held(list, itemID)
+    for _, item in ipairs(list or {}) do
+        if item.itemID == itemID then return item.count end
+    end
+    return nil
+end
+
+-- The hearth test above ends logged out; come back into the world first.
+frame:Fire("PLAYER_ENTERING_WORLD")
+frame:Tick(10)
+frame:Fire("BAG_UPDATE_DELAYED")
+frame:Tick(10)
+local inv = record().inventory
+check(held(inv.contents, 10939) == 20, "the reagent bag's Motes must count as held")
+check(held(inv.contents, 2589) == 72, "and its Linen must add to the Linen in the bags (32 + 40)")
+check(inv.totalSlots == 22 and inv.freeSlots == 19,
+    "a reagent bag's slots are not bag space: totals stay 16 + 6, with 19 free")
+check(inv.reagentSlots == 8 and inv.reagentFreeSlots == 6, "they are reported apart instead")
+local reagentBag
+for _, bag in ipairs(inv.bags or {}) do if bag.bagIndex == 5 then reagentBag = bag end end
+check(reagentBag and reagentBag.reagent == true, "and the bag itself is marked as a reagent bag")
+check(held(inv.contents, 5396) == nil, "the keyring is not a bag")
+
+frame:Fire("BANKFRAME_OPENED")
+local bank = record().bank
+check(bank ~= nil, "opening the bank must capture it")
+check(bank and held(bank.contents, 2592) == 7, "the bank is its purchased tabs")
+check(bank and bank.totalSlots == 48, "and only those: 48 slots, from tab 6 alone")
+check(bank and held(bank.contents, 5396) == nil, "the keyring at -1 is not the bank")
+check(bank and held(bank.contents, 10939) == nil, "the worn reagent bag at 5 is not the bank")
+check(bank and held(bank.contents, 2589) == nil,
+    "the account tabs are not this character's to count")
+frame:Fire("BANKFRAME_CLOSED")
+
+-- Indoors. The client puts the inn in the zone and leaves the subzone empty;
+-- the map knows the inn is a Micro map inside Elwynn Forest.
+Enum.UIMapType = { Cosmic = 0, World = 1, Continent = 2, Zone = 3, Dungeon = 4, Micro = 5, Orphan = 6 }
+local maps = {
+    [1429] = { mapID = 1429, name = "Elwynn Forest", mapType = 3, parentMapID = 1415 },
+    [9001] = { mapID = 9001, name = "Lion's Pride Inn", mapType = 5, parentMapID = 1429 },
+    [1581] = { mapID = 1581, name = "The Deadmines", mapType = 4, parentMapID = 1436 },
+}
+local best_map
+C_Map = {}
+function C_Map.GetBestMapForUnit() return best_map end
+function C_Map.GetMapInfo(id) return maps[id] end
+
+world.zone, world.subzone, best_map = "Lion's Pride Inn", "", 9001
+frame:Fire("ZONE_CHANGED_INDOORS")
+check(record().zone == "Elwynn Forest", "indoors, the zone is the zone, not the building")
+check(record().subZone == "Lion's Pride Inn", "and the building becomes the empty subzone")
+
+world.zone, world.subzone, best_map = "The Deadmines", "", 1581
+frame:Fire("ZONE_CHANGED_NEW_AREA")
+check(record().zone == "The Deadmines", "a dungeon keeps its own name")
+
+-- Back to the fixture's world: the stubs removed, a fresh reading taken.
+bag_slots[5], bag_items[5], bag_slots[-1], bag_items[-1] = nil, nil, nil, nil
+bag_slots[6], bag_items[6], bag_slots[15], bag_items[15] = nil, nil, nil, nil
+Enum.BagIndex, Enum.BankType, Enum.UIMapType = saved_enum_bagindex, saved_enum_banktype, nil
+Constants, C_Bank, C_Map = nil, nil, nil
+record().bank = nil
+world.zone, world.subzone = nil, nil
+
 -- Back to the state the fixture expects.
 world.now, world.money = saved_now, saved_money
 world.zone, world.subzone, world.resting = nil, nil, true

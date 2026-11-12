@@ -110,6 +110,8 @@ fn enchanter(
         }]),
         total_slots: Some(16),
         free_slots: Some(10),
+        reagent_slots: None,
+        reagent_free_slots: None,
         contents: Some(
             bag.iter()
                 .map(|(id, count)| wow_coach_core::collector::ItemStack {

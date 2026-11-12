@@ -517,8 +517,15 @@ pub struct Quest {
 pub struct Inventory {
     #[serde(deserialize_with = "empty_table_as_list")]
     pub bags: Option<Vec<Bag>>,
+    /// Ordinary bag space only. A reagent bag's slots are counted in
+    /// `reagent_slots` instead, because they cannot hold loot.
     pub total_slots: Option<u32>,
     pub free_slots: Option<u32>,
+    /// Slots in a worn reagent bag (Forever), and how many are free. Absent
+    /// when the client has no reagent bag slot or none is worn. Its contents
+    /// are in `contents` with everything else: materials there are held.
+    pub reagent_slots: Option<u32>,
+    pub reagent_free_slots: Option<u32>,
     #[serde(deserialize_with = "empty_table_as_list")]
     pub contents: Option<Vec<ItemStack>>,
 }
@@ -648,6 +655,8 @@ pub struct Bag {
     pub item_id: Option<u32>,
     pub slots: Option<u32>,
     pub free_slots: Option<u32>,
+    /// True for a reagent bag, whose slots hold only crafting materials.
+    pub reagent: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]

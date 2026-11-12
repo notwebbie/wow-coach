@@ -166,9 +166,16 @@ end
 -- bank already relies on. What this cannot catch is a reading that is wrong
 -- and self-consistent; the caller defers captures away from loading screens
 -- and logout for that.
-local function captureContainers(ids, previous)
+--
+-- `reagentIDs`, when given, is a set of container ids whose contents count as
+-- held but whose slots do not count as bag space: a reagent bag holds only
+-- crafting materials, so its free slots cannot take loot. Those bags are
+-- marked `reagent = true` and totalled apart, in reagentSlots and
+-- reagentFreeSlots, which are absent when no reagent bag answered.
+local function captureContainers(ids, previous, reagentIDs)
     local bags, items = {}, {}
     local totalSlots, freeSlots, sawAnyBag = 0, 0, false
+    local reagentSlots, reagentFreeSlots, sawReagentBag = 0, 0, false
 
     local previousBags = {}
     for _, seen in ipairs(previous and previous.bags or {}) do
@@ -180,10 +187,18 @@ local function captureContainers(ids, previous)
         if slots and slots > 0 then
             sawAnyBag = true
             local free = containerNumFreeSlots(bag) or 0
-            totalSlots = totalSlots + slots
-            freeSlots = freeSlots + free
+            local isReagent = reagentIDs and reagentIDs[bag] or nil
+            if isReagent then
+                sawReagentBag = true
+                reagentSlots = reagentSlots + slots
+                reagentFreeSlots = reagentFreeSlots + free
+            else
+                totalSlots = totalSlots + slots
+                freeSlots = freeSlots + free
+            end
             bags[#bags + 1] = {
                 bagIndex = bag, itemID = bagItemID(bag), slots = slots, freeSlots = free,
+                reagent = isReagent,
             }
             local occupied, answered = slots - free, 0
             for slot = 1, slots do
@@ -210,19 +225,76 @@ local function captureContainers(ids, previous)
     end
     table.sort(contents, function(a, b) return a.itemID < b.itemID end)
 
-    return { bags = bags, totalSlots = totalSlots, freeSlots = freeSlots, contents = contents }
+    local result = { bags = bags, totalSlots = totalSlots, freeSlots = freeSlots, contents = contents }
+    if sawReagentBag then
+        result.reagentSlots, result.reagentFreeSlots = reagentSlots, reagentFreeSlots
+    end
+    return result
 end
 
-local BAG_IDS = { 0, 1, 2, 3, 4 }
+-- WHICH CONTAINERS, ON WHICH CLIENT
+--
+-- The two clients number their containers differently, and the difference is
+-- invisible until it is wrong. Checked against Blizzard's shipped UI source
+-- for both (Gethe/wow-ui-source, branches classic_anniversary 2.5.6 and
+-- forever 1.60.1, 12 November 2026):
+--
+--              2.5.x (Anniversary)         Forever (modern engine)
+--   -1         the bank window             the KEYRING
+--   -2         keyring                     sentinel: character bank tabs
+--   -3         reagent bank                sentinel: account bank tabs
+--    0..4      backpack and bags           backpack and bags
+--    5         first bank bag              the REAGENT BAG, worn
+--    6..       bank bags 2..7              character bank tabs
+--
+-- So the Classic bank list, run on Forever, read the keyring as the bank and
+-- the worn reagent bag as a bank bag, while the reagent bag itself never
+-- appeared in the bags at all (Tovin, 12 November: Motes and Linen in a
+-- Linen Reagent Bag, invisible). Note the 2.5.6 source also ships a BagIndex
+-- enumeration that puts bank bags at 6..12 -- it is shared, generated
+-- documentation, and the client's own ITEM_INVENTORY_BANK_BAG_OFFSET = 4 says
+-- otherwise. The enumeration is not used to decide anything on that client.
+--
+-- The modern client is asked rather than assumed: whether it has a reagent bag
+-- slot (NumReagentBagSlots), and which bank tabs this character has bought
+-- (C_Bank.FetchPurchasedBankTabIDs). Account bank tabs are deliberately not
+-- read: they belong to the account, and storing them on each character would
+-- count one stack once per character that opened the bank.
+local CLASSIC_BAG_IDS = { 0, 1, 2, 3, 4 }
+local CLASSIC_BANK_IDS = { -1, -3, 5, 6, 7, 8, 9, 10, 11 }
 
--- The bank: the main window (-1), the seven purchasable bag slots (5..11), and
--- the reagent bank (-3) on clients that have one. A container the client does
--- not have reports no slots, so naming one here costs nothing and a client
--- that grows one is captured without an addon update.
-local BANK_IDS = { -1, -3, 5, 6, 7, 8, 9, 10, 11 }
+local function inventoryConstant(name)
+    local constants = Constants and Constants.InventoryConstants
+    return constants and constants[name]
+end
+
+local function carriedBagIDs()
+    local reagentSlots = inventoryConstant("NumReagentBagSlots")
+    local reagentBag = Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag
+    if type(reagentSlots) ~= "number" or reagentSlots < 1 or not reagentBag then
+        return CLASSIC_BAG_IDS, nil
+    end
+    local ids = { 0, 1, 2, 3, 4 }
+    local reagent = {}
+    for i = 0, reagentSlots - 1 do
+        ids[#ids + 1] = reagentBag + i
+        reagent[reagentBag + i] = true
+    end
+    return ids, reagent
+end
+
+local function bankBagIDs()
+    if has("C_Bank.FetchPurchasedBankTabIDs") and Enum and Enum.BankType
+        and Enum.BankType.Character ~= nil then
+        local ids = C_Bank.FetchPurchasedBankTabIDs(Enum.BankType.Character)
+        return type(ids) == "table" and ids or {}
+    end
+    return CLASSIC_BANK_IDS
+end
 
 local function captureBags(previous)
-    return captureContainers(BAG_IDS, previous)
+    local ids, reagent = carriedBagIDs()
+    return captureContainers(ids, previous, reagent)
 end
 
 --------------------------------------------------------------------------------
@@ -322,7 +394,7 @@ end
 -- carries the time it was taken. A bank seen last Tuesday is still the best
 -- information anyone has; it simply has to say so rather than pass for current.
 local function captureBank(previous)
-    local bank = captureContainers(BANK_IDS, previous)
+    local bank = captureContainers(bankBagIDs(), previous)
     if not bank then return nil end
     bank.capturedAt = time()
     return bank
@@ -1335,16 +1407,53 @@ end
 -- down. Observed by the probe at PLAYER_LOGOUT: UnitXPMax and UnitXP return 0
 -- and the rest state goes nil, which would store "0 XP, not resting" as a
 -- fact. maxXP is 0 for no living character, so it is the tell.
+-- The zone the character is in, by name.
+--
+-- GetRealZoneText answers with the building when the character is indoors on
+-- the modern client: Tovin and Corvin were both captured with zone "Lion's
+-- Pride Inn" and an empty subzone, and Tovin later as "Lakeshire Inn". The map
+-- system knows better. An inn is a Micro map whose parent is the zone, so walk
+-- up through Micro maps and take the first Zone. A Dungeon is left alone --
+-- its own name is the right answer -- and anything else falls back to the
+-- text, which is what every client without C_Map gets anyway.
+--
+-- Returns the zone, and second the text it replaced when the two differ, so
+-- the building name can stand in for a subzone the client left empty.
+local function zoneName()
+    local text = GetRealZoneText and GetRealZoneText()
+    local types = Enum and Enum.UIMapType
+    if types and types.Zone and types.Micro and has("C_Map.GetBestMapForUnit")
+        and has("C_Map.GetMapInfo") then
+        local mapID = C_Map.GetBestMapForUnit("player")
+        local info = mapID and C_Map.GetMapInfo(mapID)
+        local hops = 0
+        while info and info.mapType == types.Micro and info.parentMapID and hops < 8 do
+            info = C_Map.GetMapInfo(info.parentMapID)
+            hops = hops + 1
+        end
+        if info and info.mapType == types.Zone and type(info.name) == "string"
+            and info.name ~= "" then
+            if text and text ~= "" and text ~= info.name then return info.name, text end
+            return info.name
+        end
+    end
+    return text
+end
+
 local function captureVitals(record)
     local maxXP = UnitXPMax and UnitXPMax("player")
     if UnitXPMax and (maxXP == nil or maxXP == 0) then return false end
 
     record.level = UnitLevel and UnitLevel("player")
-    local zone = GetRealZoneText and GetRealZoneText()
+    local zone, building = zoneName()
     if zone and zone ~= "" then record.zone = zone end
     -- An empty subzone is a real answer -- open ground with no named area --
     -- so it is stored as given, unlike an empty zone, which no character has.
-    record.subZone = GetSubZoneText and GetSubZoneText()
+    -- Except indoors, where the client moved the building's name into the zone
+    -- and left the subzone empty: the building is the better subzone.
+    local subZone = GetSubZoneText and GetSubZoneText()
+    if building and (subZone == nil or subZone == "") then subZone = building end
+    record.subZone = subZone
     record.bindLocation = GetBindLocation and GetBindLocation()
     if IsResting then record.isResting = IsResting() and true or false end
     record.moneyCopper = GetMoney and GetMoney()

@@ -67,6 +67,8 @@ fn character(
             bags: Some(Vec::new()),
             total_slots: Some(80),
             free_slots: Some(40),
+            reagent_slots: None,
+            reagent_free_slots: None,
             contents: Some(
                 bags.iter()
                     .map(|(item_id, count)| ItemStack {

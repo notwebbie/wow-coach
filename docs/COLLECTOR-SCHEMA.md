@@ -112,7 +112,7 @@ collector predates without waiting for an addon release.
 
 | Field | Type | Notes |
 |---|---|---|
-| `zone`, `subZone`, `bindLocation` | string | |
+| `zone`, `subZone`, `bindLocation` | string | `zone` is the zone, even indoors: the modern client reports the building (an inn) as the zone with an empty subzone, so from collector 0.4.2 the zone comes from the map system and the building moves to `subZone`. A dungeon keeps its own name. |
 | `isResting` | boolean | |
 | `xp`, `maxXP` | number | |
 | `restedXP` | number | `0` when not rested; absent when not captured |
@@ -364,8 +364,21 @@ expected to work offline, so a roster-wide holdings view had nothing to print
 but bare numbers. Never match on `name`: it differs by locale and by whether
 the client happened to have the item loaded.
 
-`inventory` covers bags 0–4 only. The bank is a separate key, for the reason
-below.
+`inventory` covers bags 0–4, plus the **reagent bag** on clients that have a
+reagent bag slot. The bank is a separate key, for the reason below.
+
+**The reagent bag (Forever, collector 0.4.2).** A reagent bag holds only
+crafting materials, so its contents are held — they are in `contents` with
+everything else — but its slots are not bag space, because loot cannot go
+there. It is listed in `bags` with `reagent = true`, and its slots are totalled
+in `reagentSlots` and `reagentFreeSlots` instead of `totalSlots` and
+`freeSlots`. Both fields are absent when no reagent bag is worn, and on clients
+with none. Before 0.4.2 the reagent bag was never read at all, so a Forever
+capture from an older collector undercounts every material kept in one.
+
+The client is asked rather than assumed: the reagent bag is read only when
+`Constants.InventoryConstants.NumReagentBagSlots` is at least 1, at
+`Enum.BagIndex.ReagentBag` (5 on Forever). The keyring is never read.
 
 **A bag reading the client cannot have meant is refused, and the last good one
 kept.** Around a loading screen and during logout the client goes on answering
@@ -450,8 +463,27 @@ reason that readers have to honour: **the bank is only readable while its
 window is open.** It is a timestamped cache exactly like `recipes`, not a live
 capture.
 
-Containers read are the main bank window (`-1`), the seven purchasable bag
-slots (`5`–`11`), and the reagent bank (`-3`) on clients that have one.
+**Which containers are the bank depends on the client**, and the two number
+them in incompatible ways (checked against Blizzard's shipped UI source for
+both, 12 November 2026):
+
+| Id | 2.5.x (Anniversary) | Forever |
+|---|---|---|
+| `-1` | the bank window | the **keyring** |
+| `-3` | reagent bank | account bank tabs (sentinel) |
+| `5` | first bank bag | the **worn reagent bag** |
+| `6`… | bank bags 2–7 | character bank tabs |
+
+On 2.5.x the bank is the main window (`-1`), the purchasable bag slots
+(`5`–`11`) and the reagent bank (`-3`) where present. On Forever it is the
+character bank tabs this character has bought, as listed by
+`C_Bank.FetchPurchasedBankTabIDs(Enum.BankType.Character)`. **Account bank tabs
+are not captured**: they belong to the account, and storing them on every
+character that opened the bank would count each stack once per character.
+
+Before collector 0.4.2 Forever used the 2.5.x list, which read the keyring as
+the bank and the worn reagent bag as a bank bag. A Forever `bank` written by an
+older collector should be treated as unreliable and replaced by the next look.
 
 Two rules follow, and both exist because the client does not fail helpfully
 when the bank is shut. It answers *emptily*: `GetContainerNumSlots` still

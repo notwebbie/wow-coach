@@ -851,3 +851,51 @@ fn vitals_at_is_read_from_the_file() {
     assert_eq!(record.vitals_at, Some(1_030));
     assert_eq!(record.observed_at(), Some(1_030));
 }
+
+// ---------------------------------------------------------------------------
+// Collector 0.4.2: the reagent bag on the modern client.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_reagent_bag_is_held_but_is_not_bag_space() {
+    let text = r#"WoWCoachCollectorDB = {
+["schemaVersion"] = 3,
+["characters"] = {
+["7:forever|5:Realm|5:Tovin"] = {
+["capturedAt"] = 1000,
+["inventory"] = {
+["totalSlots"] = 52,
+["freeSlots"] = 18,
+["reagentSlots"] = 8,
+["reagentFreeSlots"] = 6,
+["bags"] = {
+{ ["bagIndex"] = 0, ["slots"] = 20, ["freeSlots"] = 3 },
+{ ["bagIndex"] = 5, ["slots"] = 8, ["freeSlots"] = 6, ["reagent"] = true, ["itemID"] = 253664 },
+},
+["contents"] = {
+{ ["itemID"] = 10939, ["count"] = 20 },
+},
+},
+},
+},
+}
+"#;
+    let loaded = wow_coach_core::collector::load(text).expect("parses");
+    let record = loaded.db.characters.values().next().expect("one character");
+    let inventory = record.inventory.as_ref().expect("inventory");
+    assert_eq!(
+        record.free_bag_slots(),
+        Some(18),
+        "bag pressure counts ordinary slots only"
+    );
+    assert_eq!(inventory.reagent_slots, Some(8));
+    assert_eq!(inventory.reagent_free_slots, Some(6));
+    let reagent_bag = inventory
+        .bags
+        .as_ref()
+        .unwrap()
+        .iter()
+        .find(|bag| bag.bag_index == Some(5))
+        .expect("reagent bag listed");
+    assert_eq!(reagent_bag.reagent, Some(true));
+}

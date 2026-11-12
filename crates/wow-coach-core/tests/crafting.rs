@@ -28,6 +28,8 @@ fn character(name: &str, faction: &str, stacks: &[(u32, u32)]) -> CharacterRecor
             bags: Some(Vec::new()),
             total_slots: Some(80),
             free_slots: Some(40),
+            reagent_slots: None,
+            reagent_free_slots: None,
             contents: Some(
                 stacks
                     .iter()

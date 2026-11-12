@@ -35,6 +35,8 @@ fn character(name: &str, gold_copper: u64, stacks: &[(u32, u32)]) -> CharacterRe
             bags: Some(Vec::new()),
             total_slots: Some(80),
             free_slots: Some(40),
+            reagent_slots: None,
+            reagent_free_slots: None,
             contents: Some(
                 stacks
                     .iter()
@@ -350,6 +352,8 @@ fn an_item_name_is_used_when_the_capture_had_one_and_never_as_a_key() {
         bags: Some(Vec::new()),
         total_slots: Some(16),
         free_slots: Some(15),
+        reagent_slots: None,
+        reagent_free_slots: None,
         contents: Some(vec![ItemStack {
             item_id: Some(2447),
             count: Some(5),
