@@ -44,10 +44,10 @@ jobs:
       - name: The page and the bindings agree on the API
         run: |
           missing=0
-          for call in 'new Session(' '.characters()' '.set_roles(' '.recommendation()' '.notices()' '.professions()' '.quests(' '.gear('; do
+          for call in 'new Session(' '.characters()' '.set_roles(' '.recommendation()' '.notices()' '.professions()' '.quests(' '.gear(' '.provisioning()'; do
             grep -qF "$call" apps/web/index.html || { echo "::error::apps/web/index.html no longer calls $call"; missing=1; }
           done
-          for method in 'pub fn characters(&self)' 'pub fn set_roles(&mut self' 'pub fn recommendation(&self)' 'pub fn notices(&self)' 'pub fn professions(&self)' 'pub fn quests(&self, key: &str)' 'pub fn gear(&self, key: &str)'; do
+          for method in 'pub fn characters(&self)' 'pub fn set_roles(&mut self' 'pub fn recommendation(&self)' 'pub fn notices(&self)' 'pub fn professions(&self)' 'pub fn quests(&self, key: &str)' 'pub fn gear(&self, key: &str)' 'pub fn provisioning(&self)'; do
             grep -qF "$method" crates/wow-coach-wasm/src/lib.rs || { echo "::error::wow-coach-wasm no longer exposes $method"; missing=1; }
           done
           exit $missing
