@@ -17,6 +17,11 @@ running once per machine, and again when Playwright's version changes.
 A sandbox that already ships a Chromium can skip the download by pointing at
 it: `CHROMIUM_PATH=/path/to/chromium node page.mjs`.
 
+**If `node page.mjs` says it cannot find the package `playwright`** right after
+`npm install`, the shell has `NODE_ENV=production` set, which makes npm skip
+devDependencies — and Playwright is one. It even reports "removed 2 packages".
+Run `npm install --include=dev` instead.
+
 **If the download finishes and then hangs**, it is stalling on extraction, not
 on the network — re-running just deletes the half-unpacked copy and fetches the
 identical archive again. Endpoint security inspecting a freshly written browser
