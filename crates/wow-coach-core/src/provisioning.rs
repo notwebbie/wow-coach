@@ -213,6 +213,7 @@ fn route_for(
     want: &CraftRoute,
     needer: &str,
     needer_market: &Option<String>,
+    needer_faction: Option<&str>,
     crafters: &[Crafter<'_>],
     assessments: &[crafting::Craftable],
 ) -> Route {
@@ -279,8 +280,19 @@ fn route_for(
 
     for crafter in crafters {
         if crafter.market != *needer_market {
-            // Right profession, wrong side of the world.
-            if across_the_line.is_none() {
+            // Right profession, wrong side of the world. Worth naming only when
+            // the other side could actually make it -- and only when it is the
+            // faction line that is in the way. Two things this used to get
+            // wrong on a real roster (13 November): Varek was told Corvin could
+            // make his wand while Corvin's own line said he was 13 Enchanting
+            // points short, and a same-faction character on another realm or
+            // ruleset was described as being across the faction line.
+            let could_make = crafter.rank.unwrap_or(0) >= want.needs_skill;
+            let other_faction = matches!(
+                (crafter.faction, needer_faction),
+                (Some(theirs), Some(ours)) if theirs != ours
+            );
+            if could_make && other_faction && across_the_line.is_none() {
                 across_the_line = Some(crafter);
             }
             continue;
@@ -417,7 +429,14 @@ pub fn plan(
                         }
                     }
                     let assessments = crafting::for_recipe(entries, holdings, prices, want.recipe);
-                    route_for(want, name, &market, &crafters, &assessments)
+                    route_for(
+                        want,
+                        name,
+                        &market,
+                        record.faction.as_deref(),
+                        &crafters,
+                        &assessments,
+                    )
                 }
                 None => Route::Buy,
             };

@@ -181,6 +181,22 @@ fn frictions(record: &CharacterRecord) -> Vec<Friction> {
         }
     }
 
+    // A full reagent bag is quieter than full bags and costs the same: new
+    // materials spill into ordinary slots, so the bag pressure above arrives
+    // sooner than its own count says. Only raised when the bag is completely
+    // full, because a reagent bag is meant to be mostly full.
+    if let Some(inventory) = record.inventory.as_ref() {
+        if let (Some(slots), Some(0)) = (inventory.reagent_slots, inventory.reagent_free_slots) {
+            if slots > 0 {
+                found.push(Friction {
+                    summary: format!(
+                        "the reagent bag is full ({slots} of {slots}), so new materials spill into your bags"
+                    ),
+                });
+            }
+        }
+    }
+
     found
 }
 
@@ -298,6 +314,36 @@ pub fn advise(entries: &[RosterEntry<'_>], roster_is_complete: bool) -> Advice {
     });
     advice.park.sort_by(|a, b| a.name.cmp(&b.name));
 
+    // The first character is presented as "play this next". If it is only
+    // still filling, its own description -- "leaving it parked is working" --
+    // argues the opposite, and the page showed exactly that sentence under
+    // PLAY NEXT (Tovin, 13 November). Nothing is at stake on rest in that
+    // case, so say so, and say what the pick actually rests on. The Phase 3
+    // brief's first rule: a fallback must say what it actually did.
+    let rivals = advice.play.len().saturating_sub(1);
+    if let Some(top) = advice.play.first_mut() {
+        if let Rested::Filling { rested, cap } = top.rested {
+            let level_text = top
+                .level
+                .map(|level| format!("Level {level}"))
+                .unwrap_or_else(|| "This character".to_string());
+            let percent = Rested::fraction(rested, cap) * 100.0;
+            top.reasons = vec![if rivals == 0 {
+                format!(
+                    "{level_text}, the only character in the rotation that is resting. Rested XP is \
+                     {rested} of {cap} ({percent:.0}%) and still filling, so nothing is lost by \
+                     playing it now."
+                )
+            } else {
+                format!(
+                    "{level_text}. Nobody in the rotation is at or near the rested cap, so no rest \
+                     is being wasted whichever you play; this one leads on level and open tasks, \
+                     not on rest. Rested XP is {rested} of {cap} ({percent:.0}%) and still filling."
+                )
+            }];
+        }
+    }
+
     if !roster_is_complete {
         advice.caveats.push(
             "Part of the roster has never been captured, so this ranks only what it can see."
@@ -367,7 +413,7 @@ pub fn advise(entries: &[RosterEntry<'_>], roster_is_complete: bool) -> Advice {
                 .push("No character is in the play rotation.".to_string());
         } else {
             advice.caveats.push(format!(
-                "Nothing is marked as being levelled, so there is nothing to rank. No role set yet for {}. Mark the ones you are levelling with `set-role <name> active`.",
+                "Nothing is marked as being levelled, so there is nothing to rank. No role set yet for {}. Mark the ones you are levelling as active.",
                 undecided.join(", ")
             ));
         }

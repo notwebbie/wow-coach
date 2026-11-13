@@ -463,3 +463,78 @@ fn only_well_rested_moves_the_rested_caveat() {
         "an uncaptured tree is an unknown: {unknown:?}"
     );
 }
+
+#[test]
+fn the_top_pick_never_argues_for_staying_parked() {
+    // Tovin, 13 November: the only character in the rotation, still filling,
+    // shown under PLAY NEXT with "so leaving it parked is working".
+    let characters = roster_of(vec![character("Filling", 30, 10_000, 38_800)]);
+    let entries = roster::roster(&characters, &levelling(&characters));
+    let advice = coaching::advise(&entries, true);
+    let reason = advice.play_next().unwrap().reasons.join(" ");
+    assert!(!reason.contains("parked is working"), "{reason}");
+    assert!(
+        reason.contains("only character in the rotation"),
+        "{reason}"
+    );
+    assert!(reason.contains("nothing is lost"), "{reason}");
+}
+
+#[test]
+fn among_several_still_filling_the_pick_admits_rest_did_not_decide_it() {
+    let characters = roster_of(vec![
+        character("Higher", 30, 10_000, 38_800),
+        character("Lower", 20, 5_000, 20_000),
+    ]);
+    let entries = roster::roster(&characters, &levelling(&characters));
+    let advice = coaching::advise(&entries, true);
+    let top = advice.play_next().unwrap();
+    let reason = top.reasons.join(" ");
+    assert_eq!(top.name, "Higher");
+    assert!(reason.contains("not on rest"), "{reason}");
+    // The others keep their own description: for them parking is right.
+    let second = advice.play[1].reasons.join(" ");
+    assert!(second.contains("parked is working"), "{second}");
+}
+
+#[test]
+fn the_no_roles_caveat_does_not_name_a_shell_command() {
+    // The web client shows this caveat beside its tick boxes.
+    let characters = roster_of(vec![character("Anyone", 30, 10_000, 38_800)]);
+    let entries = roster::roster(&characters, &Default::default());
+    let advice = coaching::advise(&entries, true);
+    let caveats = advice.caveats.join(" ");
+    assert!(
+        caveats.contains("Nothing is marked as being levelled"),
+        "{caveats}"
+    );
+    assert!(!caveats.contains("set-role"), "{caveats}");
+}
+
+#[test]
+fn a_full_reagent_bag_is_a_friction() {
+    let mut record = character("Packrat", 17, 1_940, 17_700);
+    record.inventory = Some(wow_coach_core::collector::Inventory {
+        total_slots: Some(52),
+        free_slots: Some(20),
+        reagent_slots: Some(6),
+        reagent_free_slots: Some(0),
+        ..Default::default()
+    });
+    let characters = roster_of(vec![record]);
+    let entries = roster::roster(&characters, &levelling(&characters));
+    let advice = coaching::advise(&entries, true);
+    let frictions: Vec<String> = advice
+        .play_next()
+        .unwrap()
+        .frictions
+        .iter()
+        .map(|f| f.summary.clone())
+        .collect();
+    assert!(
+        frictions
+            .iter()
+            .any(|f| f.contains("reagent bag is full (6 of 6)")),
+        "{frictions:?}"
+    );
+}

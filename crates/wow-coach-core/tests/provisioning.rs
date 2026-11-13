@@ -548,3 +548,54 @@ fn a_same_faction_crafter_outranks_one_across_the_line_even_when_less_is_known()
         other => panic!("the reachable crafter is the lead, not {other:?}"),
     }
 }
+
+#[test]
+fn an_enchanter_across_the_line_who_cannot_make_it_yet_is_not_offered() {
+    // Varek and Corvin, 13 November: Corvin was named as able to make Varek's
+    // wand while his own line said he was 13 Enchanting points short.
+    let plan = provision(vec![
+        (
+            "7:forever|12:Spineshatter|9:Gravehexx",
+            character("Gravehexx", "MAGE", 11, "Horde"),
+        ),
+        (
+            "7:forever|12:Spineshatter|7:Alliane",
+            enchanter("Alliane", "Alliance", 2, &[], &[]),
+        ),
+    ]);
+    let supply = wand_supply(&plan, "Gravehexx");
+    assert!(
+        !matches!(supply.route, Route::WrongFaction { .. }),
+        "an enchanter two points in cannot make a wand for anyone: {:?}",
+        supply.route
+    );
+}
+
+#[test]
+fn a_same_faction_crafter_on_another_realm_is_not_called_the_faction_line() {
+    // Tovin on the PvP realm, Corvin on Normal: both Alliance, and mail does not
+    // cross realms either -- but "they are Alliance, nothing crosses the faction
+    // line" would be false, so the route must not be WrongFaction.
+    let plan = provision(vec![
+        (
+            "7:forever|9:Realm PvP|9:Gravehexx",
+            character("Gravehexx", "MAGE", 11, "Alliance"),
+        ),
+        (
+            "7:forever|9:Realm PvE|7:Alliane",
+            enchanter(
+                "Alliane",
+                "Alliance",
+                80,
+                &["Greater Magic Wand"],
+                &[(LESSER_MAGIC_ESSENCE, 4), (SIMPLE_WOOD, 2)],
+            ),
+        ),
+    ]);
+    let supply = wand_supply(&plan, "Gravehexx");
+    assert!(
+        !matches!(supply.route, Route::WrongFaction { .. }),
+        "{:?}",
+        supply.route
+    );
+}

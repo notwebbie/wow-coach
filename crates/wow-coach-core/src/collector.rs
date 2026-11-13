@@ -20,7 +20,7 @@ use crate::lua::{self, LuaValue};
 
 /// The schema version this reader was written against. Files declaring a newer
 /// version are still read, for the fields that are recognised.
-pub const KNOWN_SCHEMA_VERSION: u16 = 2;
+pub const KNOWN_SCHEMA_VERSION: u16 = 3;
 
 /// The global the addon writes.
 pub const SAVED_VARIABLE: &str = "WoWCoachCollectorDB";
