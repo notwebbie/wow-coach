@@ -244,7 +244,7 @@ fn walk(
         let record = entry.record;
         let crafter = entry.name().to_string();
         let market = auctionator::realm_key(record.realm.as_deref(), record.faction.as_deref());
-        let realm = market.as_ref().and_then(|key| prices.realms.get(key));
+        let realm = prices.realm_for(record);
 
         for (profession, cache) in record.recipes.iter().flatten() {
             for recipe in cache.recipes.iter().flatten() {

@@ -667,3 +667,106 @@ fn a_skill_carries_the_group_the_game_put_it_in() {
 
     assert_eq!(survey.skills[0].header.as_deref(), Some("Weapon Skills"));
 }
+
+/// A Forever character on the given ruleset. Forever names are unique across
+/// the region, so Auctionator keys its prices by ruleset, not realm and faction.
+fn forever_character(name: &str, pvp: bool, rp: bool, stacks: &[(u32, u32)]) -> CharacterRecord {
+    let mut record = character(name, 0, stacks);
+    record.game_flavor = Some("forever".to_string());
+    record.realm = Some("CAMWOW AU1 Realm 2 PvP".to_string());
+    record.faction = Some("Alliance".to_string());
+    record.ruleset = Some(wow_coach_core::collector::Ruleset {
+        hardcore: Some(false),
+        pvp: Some(pvp),
+        rp: Some(rp),
+        self_found: Some(false),
+    });
+    record
+}
+
+fn ruleset_prices(key: &str, item_id: u32, price: u64) -> PriceDb {
+    let items = [(
+        item_id.to_string(),
+        ItemPrices {
+            last_seen_min: Some(price),
+            high: [(2508, price)].into_iter().collect(),
+            low: BTreeMap::new(),
+            available: BTreeMap::new(),
+        },
+    )]
+    .into_iter()
+    .collect();
+    PriceDb {
+        realms: [(key.to_string(), RealmPrices { items })]
+            .into_iter()
+            .collect(),
+        vendor: BTreeMap::new(),
+        notes: Vec::new(),
+    }
+}
+
+#[test]
+fn a_forever_character_is_priced_from_its_rulesets_database() {
+    // Tovin, 15 November: Greater Magic Essence scanned at 4s on the PvP
+    // auction house, and the coach valued his holdings at nothing, because it
+    // looked for "CAMWOW AU1 Realm 2 PvP Alliance" and Auctionator wrote "PvP".
+    let records = characters(vec![forever_character("Tovin", true, false, &[(10939, 7)])]);
+    let mut config = RosterConfig::default();
+    config.set_role("Tovin", Role::Active);
+    let entries = roster::roster(&records, &config);
+    let survey = economy::survey(&entries, &ruleset_prices("PvP", 10939, 400));
+    let essence = survey
+        .holdings
+        .iter()
+        .find(|holding| holding.item_id == 10939)
+        .expect("priced, not left unpriced");
+    assert_eq!(essence.unit_price, Some(400));
+    assert_eq!(essence.value, Some(2_800));
+}
+
+#[test]
+fn a_forever_character_is_not_priced_from_another_rulesets_database() {
+    // Normal and PvP are separate auction houses; the PvP database must not
+    // value a character on Normal.
+    let records = characters(vec![forever_character(
+        "Corvin",
+        false,
+        false,
+        &[(10939, 7)],
+    )]);
+    let mut config = RosterConfig::default();
+    config.set_role("Corvin", Role::Active);
+    let entries = roster::roster(&records, &config);
+    let survey = economy::survey(&entries, &ruleset_prices("PvP", 10939, 400));
+    assert!(survey
+        .holdings
+        .iter()
+        .all(|holding| holding.item_id != 10939));
+    assert!(survey
+        .unpriced
+        .iter()
+        .any(|holding| holding.item_id == 10939));
+}
+
+#[test]
+fn a_classic_character_never_falls_back_to_a_ruleset_key() {
+    // An Anniversary character on a realm with no scan must stay unpriced,
+    // however its ruleset reads: the ruleset key is Forever's alone.
+    let mut record = character("Dardring", 0, &[(10939, 7)]);
+    record.game_flavor = Some("tbc".to_string());
+    record.ruleset = Some(wow_coach_core::collector::Ruleset {
+        hardcore: Some(false),
+        pvp: Some(false),
+        rp: Some(false),
+        self_found: Some(false),
+    });
+    let records = characters(vec![record]);
+    let mut config = RosterConfig::default();
+    config.set_role("Dardring", Role::Active);
+    let entries = roster::roster(&records, &config);
+    let survey = economy::survey(&entries, &ruleset_prices("PvE", 10939, 400));
+    assert!(survey
+        .holdings
+        .iter()
+        .all(|holding| holding.item_id != 10939));
+}

@@ -253,3 +253,31 @@ fn an_escaped_quote_does_not_end_the_blob() {
     );
     assert_eq!(realm.for_item(2).unwrap().high[&2460], 0x5C5C);
 }
+
+#[test]
+fn forever_ruleset_keys_follow_auctionators_order() {
+    use wow_coach_core::collector::Ruleset;
+    let key = |pvp, rp, hardcore| {
+        auctionator::forever_ruleset_key(&Ruleset {
+            hardcore: Some(hardcore),
+            pvp: Some(pvp),
+            rp: Some(rp),
+            self_found: Some(false),
+        })
+    };
+    assert_eq!(key(false, false, false), Some("PvE"));
+    assert_eq!(key(true, false, false), Some("PvP"));
+    assert_eq!(key(false, true, false), Some("RP"));
+    assert_eq!(key(true, true, false), Some("RPPvP"));
+    assert_eq!(key(false, false, true), Some("HC"));
+    // An unknown flag is not a Normal character.
+    assert_eq!(
+        auctionator::forever_ruleset_key(&Ruleset {
+            hardcore: Some(false),
+            pvp: None,
+            rp: Some(false),
+            self_found: None,
+        }),
+        None
+    );
+}

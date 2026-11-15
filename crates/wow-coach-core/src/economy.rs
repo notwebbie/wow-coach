@@ -371,7 +371,7 @@ pub fn survey(entries: &[RosterEntry<'_>], prices: &PriceDb) -> Economy {
         if let Some(key) = &realm_key {
             realms_used
                 .entry(key.clone())
-                .or_insert_with(|| prices.realms.get(key));
+                .or_insert_with(|| prices.realm_for(record));
         }
 
         // Bags and bank are accumulated through the same closure so the two
@@ -437,7 +437,9 @@ pub fn survey(entries: &[RosterEntry<'_>], prices: &PriceDb) -> Economy {
 
     for ((market, item_id), held_by) in stacks {
         let count: u32 = held_by.values().map(HeldAmount::total).sum();
-        let realm = market.as_ref().and_then(|key| prices.realms.get(key));
+        let realm = market
+            .as_ref()
+            .and_then(|key| realms_used.get(key).copied().flatten());
         let item = realm.and_then(|realm| realm.for_item(item_id));
         let unit_price = item
             .and_then(|item| item.last_seen_min)

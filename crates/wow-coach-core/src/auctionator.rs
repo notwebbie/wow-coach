@@ -49,7 +49,10 @@ const VENDOR_GLOBAL: &[u8] = b"AUCTIONATOR_VENDOR_PRICE_CACHE = {";
 /// The whole price database, keyed by Auctionator's own realm key.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PriceDb {
-    /// Key is `"<Realm> <Faction>"`, e.g. `"Dreamscythe Horde"`.
+    /// Keyed as Auctionator keys it, which differs by client: `"<Realm>
+    /// <Faction>"` on the classic-style clients (`"Dreamscythe Horde"`), and
+    /// the ruleset alone on Forever (`"PvP"`, `"RPPvP"`). Look a character up
+    /// with [`PriceDb::realm_for`], never by building a key.
     pub realms: BTreeMap<String, RealmPrices>,
     /// Item id to the price a vendor pays, in copper. Account-wide, and
     /// unrelated to the auction house.
@@ -462,9 +465,56 @@ fn day_map(value: &ciborium::Value) -> BTreeMap<i64, u64> {
     found
 }
 
-/// Auctionator's realm key for a character, or `None` when either half is
-/// missing. Both halves are needed: prices are per faction, and valuing Horde
-/// holdings at Alliance prices would be quietly wrong rather than obviously so.
+/// The market a character trades in: realm and faction, or `None` when either
+/// half is missing. This is the boundary mail and trade cannot cross, and on
+/// the classic-style clients it is also Auctionator's price key. It is not the
+/// price key on Forever -- see [`forever_ruleset_key`] and
+/// [`PriceDb::realm_for`].
 pub fn realm_key(realm: Option<&str>, faction: Option<&str>) -> Option<String> {
     Some(format!("{} {}", realm?, faction?))
+}
+
+/// Auctionator's price key on Forever.
+///
+/// Forever names are unique across the region, and Auctionator (Source_ModernAH,
+/// `GetRegionalRulesetName`, version 347) keys its database by ruleset alone
+/// when `RegionalUniqueNamesEnabled()` is true: `RPPvP` when both the PvP and
+/// RP rules are active, else `PvP`, `RP`, `HC`, and `PvE` for none. The order
+/// matters and is Auctionator's. There is no faction in the key, so on a
+/// ruleset where an account has both factions Auctionator keeps one database
+/// for both; the coach cannot separate what Auctionator merged.
+///
+/// `None` when any flag is unknown, because guessing `PvE` for an uncaptured
+/// ruleset would price a PvP character at the Normal market.
+pub fn forever_ruleset_key(ruleset: &crate::collector::Ruleset) -> Option<&'static str> {
+    let (pvp, rp, hardcore) = (ruleset.pvp?, ruleset.rp?, ruleset.hardcore?);
+    Some(match (pvp, rp, hardcore) {
+        (true, true, _) => "RPPvP",
+        (true, false, _) => "PvP",
+        (false, true, _) => "RP",
+        (false, false, true) => "HC",
+        (false, false, false) => "PvE",
+    })
+}
+
+impl PriceDb {
+    /// The prices a character's holdings should be valued at.
+    ///
+    /// Tries the classic-style key first, which is what every client but
+    /// Forever writes, then -- for a Forever character only -- the ruleset
+    /// key. Before this, every Forever character was valued at nothing,
+    /// because no `"<Realm> <Faction>"` key exists in a Forever database
+    /// (found 15 November, with three Forever rulesets scanned).
+    pub fn realm_for(&self, record: &crate::collector::CharacterRecord) -> Option<&RealmPrices> {
+        if let Some(found) = realm_key(record.realm.as_deref(), record.faction.as_deref())
+            .and_then(|key| self.realms.get(&key))
+        {
+            return Some(found);
+        }
+        if record.game_flavor.as_deref() != Some("forever") {
+            return None;
+        }
+        let key = forever_ruleset_key(record.ruleset.as_ref()?)?;
+        self.realms.get(key)
+    }
 }
