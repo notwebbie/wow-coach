@@ -56,6 +56,7 @@ WoWCoachCollectorDB = {
 			},
 			["faction"] = "Horde",
 			["gameFlavor"] = "forever",
+			["guid"] = "Player-0000-0A1B2C3D",
 			["interfaceVersion"] = 16001,
 			["inventory"] = {
 				["bags"] = {

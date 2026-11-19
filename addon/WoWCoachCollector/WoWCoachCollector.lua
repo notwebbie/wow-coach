@@ -1371,6 +1371,37 @@ end
 -- Snapshot
 --------------------------------------------------------------------------------
 
+-- Who is logged in, beyond the name: the GUID where the client gives one,
+-- and the race and class ids. Any of them may be nil.
+local function playerIdentity()
+    local guid = UnitGUID and UnitGUID("player")
+    if type(guid) ~= "string" or guid == "" then guid = nil end
+    local raceID, classID
+    if UnitRace then raceID = select(3, UnitRace("player")) end
+    if UnitClass then classID = select(3, UnitClass("player")) end
+    return guid, raceID, classID
+end
+
+-- Whether a stored record belongs to the character now logged in.
+--
+-- The character key is flavor, realm and name, and a name outlives the
+-- character: delete one, create another under the same name, and the new
+-- character inherits the old record. Most of it is overwritten by the first
+-- capture, but the caches are not -- recipes and the bank are only refreshed
+-- when their windows open, so the new character went on "knowing" the old
+-- one's recipes (Kazrin, 19 November: a Troll rerolled as an Orc kept the
+-- Troll's Leatherworking and First Aid). The GUID settles it. A record written
+-- before the GUID was stored falls back to race and class, which a reroll
+-- almost always changes and a living character never does without a paid
+-- service. Anything unknown counts as a match: discarding a real character's
+-- caches on a guess is the worse mistake.
+local function sameCharacter(record, guid, raceID, classID)
+    if record.guid and guid then return record.guid == guid end
+    if record.raceID and raceID and record.raceID ~= raceID then return false end
+    if record.classID and classID and record.classID ~= classID then return false end
+    return true
+end
+
 local function currentRecord()
     local name = UnitName and UnitName("player")
     local realm = GetRealmName and GetRealmName()
@@ -1385,10 +1416,17 @@ local function currentRecord()
 
     local key = characterKey(flavor, realm, name)
     local record = WoWCoachCollectorDB.characters[key]
+    local guid, raceID, classID = playerIdentity()
+    if record and not sameCharacter(record, guid, raceID, classID) then
+        -- A different character under a reused name. Start clean rather than
+        -- pick through the old record: nothing in it describes this one.
+        record = nil
+    end
     if not record then
         record = {}
         WoWCoachCollectorDB.characters[key] = record
     end
+    if guid then record.guid = guid end
     return record, flavor, interface, realm, name
 end
 

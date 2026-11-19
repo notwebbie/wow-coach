@@ -71,6 +71,7 @@ fn reads_the_forever_fixture() {
 
     assert_eq!(record.game_flavor.as_deref(), Some("forever"));
     assert_eq!(record.realm.as_deref(), Some("Classic Beta PvE"));
+    assert_eq!(record.guid.as_deref(), Some("Player-0000-0A1B2C3D"));
 
     // Forever supplies a stable skill id where the Classic clients do not.
     let skills = record.skills.as_ref().unwrap();

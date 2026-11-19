@@ -22,6 +22,7 @@ local world = {
     resting = true, interface = 16001, now = 1700000000,
     quest_header_collapsed = false, skill_header_collapsed = false,
     petName = nil, hardcore = false, pvp = false, rp = false,
+    guid = "Player-0000-0A1B2C3D",
 }
 
 -- Forever reports as retail. Only the C_SkillInfo namespace distinguishes it.
@@ -36,6 +37,7 @@ function UnitName(unit)
 end
 function UnitExists(unit) return unit == "pet" and world.petName ~= nil or false end
 function GetRealmName() return world.realm end
+function UnitGUID(unit) assert(unit == "player") return world.guid end
 function UnitClass(unit) assert(unit == "player") return "Mage", "MAGE", 8 end
 function UnitRace(unit) assert(unit == "player") return "Troll", "Troll", 8 end
 function UnitFactionGroup(unit) assert(unit == "player") return "Horde" end
@@ -761,6 +763,71 @@ Enum.BagIndex, Enum.BankType, Enum.UIMapType = saved_enum_bagindex, saved_enum_b
 Constants, C_Bank, C_Map = nil, nil, nil
 record().bank = nil
 world.zone, world.subzone = nil, nil
+
+--------------------------------------------------------------------------------
+-- A reused name
+--
+-- Kazrin, 19 November: a Troll hunter was deleted and an Orc created under the
+-- same name. The key is flavor, realm and name, so the Orc inherited the
+-- Troll's record, and with it the Troll's recipe caches, which only refresh
+-- when a profession window opens. A different character must start clean; the
+-- same character must keep its caches.
+--------------------------------------------------------------------------------
+
+do
+    local saved_name, saved_guid = world.name, world.guid
+    world.name = "Rerolled"
+    local reroll_key = collector.characterKey("forever", world.realm, world.name)
+    local function stale(fields)
+        local old = {
+            name = "Rerolled", race = "Troll", raceID = 8, classID = 8, level = 9,
+            recipes = { ["Leatherworking"] = { rank = 12, learnedReported = true, recipes = {} } },
+            bank = { capturedAt = 1, bags = {} },
+        }
+        for k, v in pairs(fields) do old[k] = v end
+        WoWCoachCollectorDB.characters[reroll_key] = old
+    end
+    local function current() return WoWCoachCollectorDB.characters[reroll_key] end
+
+    -- Written before GUIDs were stored, by a character of another race.
+    stale({ raceID = 2, race = "Orc" })
+    collector.capture()
+    check(current().recipes == nil, "a different race under the same name drops the old recipes")
+    check(current().bank == nil, "and the old bank")
+    check(current().raceID == 8 and current().guid == world.guid,
+        "and the record is the new character's, GUID and all")
+
+    -- A stored GUID that is not this character's, even with race and class matching.
+    stale({ guid = "Player-0000-DEADBEEF" })
+    collector.capture()
+    check(current().recipes == nil, "a different GUID drops the old recipes")
+    check(current().guid == world.guid, "and stores the new GUID")
+
+    -- The same GUID after a race change: the same character, caches kept.
+    stale({ guid = world.guid, raceID = 2, race = "Orc" })
+    collector.capture()
+    check(current().recipes and current().recipes["Leatherworking"],
+        "a matching GUID keeps the caches whatever the race says")
+    check(current().bank ~= nil, "and the bank")
+
+    -- No GUID stored yet, and nothing that disagrees: kept, and stamped.
+    stale({})
+    collector.captureRecipes()
+    check(current().recipes and current().recipes["Leatherworking"],
+        "an older record that matches is kept")
+    check(current().guid == world.guid, "and learns its GUID")
+
+    -- No GUID from the client: nothing to compare, nothing discarded.
+    world.guid = nil
+    stale({ guid = "Player-0000-DEADBEEF" })
+    collector.captureVitals()
+    check(current().recipes and current().recipes["Leatherworking"],
+        "a client without a GUID never discards on a guess")
+    check(current().guid == "Player-0000-DEADBEEF", "and leaves the stored one alone")
+
+    WoWCoachCollectorDB.characters[reroll_key] = nil
+    world.name, world.guid = saved_name, saved_guid
+end
 
 -- Back to the state the fixture expects.
 world.now, world.money = saved_now, saved_money

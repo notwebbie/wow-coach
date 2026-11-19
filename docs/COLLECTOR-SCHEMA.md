@@ -101,6 +101,16 @@ including on a record that previously had it.
 | `class`, `race` | string | Locale-independent file names (`MAGE`), not display names |
 | `classID`, `raceID` | number | |
 | `faction` | string | `Alliance` or `Horde` |
+| `guid` | string | `UnitGUID("player")`. Absent where the client gives none, and on records written before 20 November 2026 |
+
+The character key is flavor, realm and name, and a name can outlive its
+character: delete one and create another under the same name, and both map to
+the same key. `guid` is how the collector tells them apart. When the stored
+`guid` differs from the logged-in character's — or, on a record written before
+`guid` was stored, when `raceID` or `classID` differ — the collector discards
+the old record and starts a new one, so caches that only refresh when a window
+opens (`recipes`, `bank`) are never inherited by a different character. Where
+either side is unknown the record is kept.
 
 `interfaceVersion` is stored raw and deliberately. `WOW_PROJECT_ID` no longer
 identifies the flavor — the WoW Forever client reports `WOW_PROJECT_MAINLINE`

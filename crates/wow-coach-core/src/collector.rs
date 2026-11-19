@@ -133,6 +133,10 @@ pub struct CharacterRecord {
     #[serde(rename = "raceID")]
     pub race_id: Option<u16>,
     pub faction: Option<String>,
+    /// `UnitGUID("player")`. The collector uses it to start a fresh record
+    /// when a new character takes a deleted one's name; readers have no use
+    /// for it beyond that. Absent on older captures and on clients without it.
+    pub guid: Option<String>,
 
     pub zone: Option<String>,
     pub sub_zone: Option<String>,
