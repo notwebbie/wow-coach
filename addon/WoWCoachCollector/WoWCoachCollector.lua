@@ -1402,9 +1402,64 @@ local function sameCharacter(record, guid, raceID, classID)
     return true
 end
 
+-- Forever stopped naming realms: from about 20 November GetRealmName answers
+-- "" (names became region-wide, RegionalUniqueNamesEnabled), and every capture
+-- since returned early on the empty realm -- silently, for days. The ruleset is
+-- what a realm used to stand for, so it stands in, spelled the way Auctionator
+-- and Syndicator key the same thing: RPPvP, PvP, RP, HC, PvE.
+local function rulesetLabel(pvp, rp, hardcore)
+    if pvp and rp then return "RPPvP" end
+    if pvp then return "PvP" end
+    if rp then return "RP" end
+    if hardcore then return "HC" end
+    return "PvE"
+end
+
+local function rulesetRealm()
+    if not has("C_GameRules.IsGameRuleActive") or not Enum or not Enum.GameRule then return nil end
+    local function active(member)
+        local value = Enum.GameRule[member]
+        return value ~= nil and C_GameRules.IsGameRuleActive(value) and true or false
+    end
+    return rulesetLabel(active("PvPRuleset"), active("RPRuleset"), active("HardcoreRuleset"))
+end
+
+-- The same label read back out of a pre-change realm name such as
+-- "CAMWOW AU1 Realm 4 RP PvP", so an old record can be found and carried over.
+local function rulesetOfRealmName(realm)
+    if type(realm) ~= "string" then return nil end
+    local lower = " " .. string.lower(realm) .. " "
+    local pvp = string.find(lower, "pvp", 1, true) ~= nil
+    local rp = string.find(lower, "%Wrp%W") ~= nil or string.find(lower, "roleplay", 1, true) ~= nil
+    local hardcore = string.find(lower, "hardcore", 1, true) ~= nil
+    return rulesetLabel(pvp, rp, hardcore)
+end
+
+-- A character last captured under its old realm name, now to be filed under
+-- the ruleset. Moving the record keeps what only a window can refresh --
+-- recipes and the bank -- instead of starting the character from nothing.
+local function adoptRenamedRecord(characters, key, flavor, realm, name, guid, raceID, classID)
+    for oldKey, old in pairs(characters) do
+        if oldKey ~= key and type(old) == "table" and old.name == name
+            and old.gameFlavor == flavor and old.realm ~= realm
+            and rulesetOfRealmName(old.realm) == realm
+            and sameCharacter(old, guid, raceID, classID) then
+            characters[oldKey] = nil
+            characters[key] = old
+            return old
+        end
+    end
+    return nil
+end
+
 local function currentRecord()
     local name = UnitName and UnitName("player")
     local realm = GetRealmName and GetRealmName()
+    local realmFromRuleset = false
+    if not realm or realm == "" then
+        realm = rulesetRealm()
+        realmFromRuleset = realm ~= nil
+    end
     if not name or name == "" or not realm or realm == "" then return nil end
 
     local interface = interfaceVersion()
@@ -1417,6 +1472,10 @@ local function currentRecord()
     local key = characterKey(flavor, realm, name)
     local record = WoWCoachCollectorDB.characters[key]
     local guid, raceID, classID = playerIdentity()
+    if not record and realmFromRuleset then
+        record = adoptRenamedRecord(WoWCoachCollectorDB.characters, key, flavor, realm,
+            name, guid, raceID, classID)
+    end
     if record and not sameCharacter(record, guid, raceID, classID) then
         -- A different character under a reused name. Start clean rather than
         -- pick through the old record: nothing in it describes this one.

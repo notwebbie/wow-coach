@@ -836,6 +836,60 @@ frame:Fire("PLAYER_ENTERING_WORLD")
 frame:Tick(10)
 
 --------------------------------------------------------------------------------
+-- Realm names gone (live client, ~20 November 2026): GetRealmName answers "".
+-- Every capture used to return early on that, silently. The ruleset stands in,
+-- and a record filed under the old realm name is carried over, caches and all.
+-- Runs against a scratch database so the fixture below is untouched.
+--------------------------------------------------------------------------------
+
+do
+    local savedDB, savedRealm, savedGuid = WoWCoachCollectorDB, world.realm, world.guid
+    local savedPvp, savedRp = world.pvp, world.rp
+    local oldKey = collector.characterKey("forever", "CAMWOW AU1 Realm 1 PvE", world.name)
+    local rpKey = collector.characterKey("forever", "CAMWOW AU1 Realm 4 RP PvP", world.name)
+    local newKey = collector.characterKey("forever", "PvE", world.name)
+    world.realm, world.guid = "", nil
+    WoWCoachCollectorDB = { schemaVersion = 3, characters = {
+        [oldKey] = { name = world.name, realm = "CAMWOW AU1 Realm 1 PvE", gameFlavor = "forever",
+                     raceID = 8, classID = 8, level = 3, recipes = { Alchemy = { capturedAt = 1 } } },
+        [rpKey] = { name = world.name, realm = "CAMWOW AU1 Realm 4 RP PvP", gameFlavor = "forever",
+                    raceID = 8, classID = 8, level = 5 },
+    } }
+
+    collector.capture()
+    local chars = WoWCoachCollectorDB.characters
+    local moved = chars[newKey]
+    check(moved ~= nil, "an empty realm name should file the capture under the ruleset (PvE)")
+    check(chars[oldKey] == nil, "the record under the old realm name should be moved, not copied")
+    check(moved and moved.recipes and moved.recipes.Alchemy ~= nil,
+        "the old record's recipe cache should survive the move")
+    check(moved and moved.realm == "PvE" and moved.level == world.level,
+        "the moved record should be refreshed by the capture")
+    check(chars[rpKey] ~= nil and chars[rpKey].level == 5,
+        "a same-named character on another ruleset must not be taken")
+
+    -- A Troll capture must not adopt an Orc's old record under the same name.
+    WoWCoachCollectorDB = { schemaVersion = 3, characters = {
+        [oldKey] = { name = world.name, realm = "CAMWOW AU1 Realm 1 PvE", gameFlavor = "forever",
+                     raceID = 2, classID = 3, recipes = { Leatherworking = {} } },
+    } }
+    collector.capture()
+    chars = WoWCoachCollectorDB.characters
+    check(chars[oldKey] ~= nil, "a different character under the same name keeps its own record")
+    check(chars[newKey] and chars[newKey].recipes == nil, "and the new one starts clean")
+
+    -- Both PvP and RP active is RPPvP, Auctionator's spelling.
+    world.pvp, world.rp = true, true
+    WoWCoachCollectorDB = { schemaVersion = 3, characters = {} }
+    collector.captureVitals()
+    check(WoWCoachCollectorDB.characters[collector.characterKey("forever", "RPPvP", world.name)] ~= nil,
+        "PvP plus RP should be filed as RPPvP")
+
+    WoWCoachCollectorDB, world.realm, world.guid = savedDB, savedRealm, savedGuid
+    world.pvp, world.rp = savedPvp, savedRp
+end
+
+--------------------------------------------------------------------------------
 
 if failures > 0 then
     io.stderr:write(string.format("%d assertion(s) failed\n", failures))
