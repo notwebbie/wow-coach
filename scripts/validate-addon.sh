@@ -5,11 +5,16 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 addon="$repo_root/addon/WoWCoachCollector"
 toc="$addon/WoWCoachCollector.toc"
 mainline_toc="$addon/WoWCoachCollector_Mainline.toc"
+# The Forever client loads <addon>_Forever.toc when present and ignores
+# _Mainline.toc; without it, it falls back to the base (Anniversary) toc and
+# treats the collector as out of date.
+forever_toc="$addon/WoWCoachCollector_Forever.toc"
 lua="$addon/WoWCoachCollector.lua"
 release_metadata="$repo_root/addon/release-metadata.env"
 
 test -f "$toc"
 test -f "$mainline_toc"
+test -f "$forever_toc"
 test -f "$lua"
 test -f "$release_metadata"
 
@@ -33,10 +38,11 @@ case "$expected_forever" in
         ;;
 esac
 grep -qx "## Interface: $expected_forever" "$mainline_toc"
+grep -qx "## Interface: $expected_forever" "$forever_toc"
 
 # Both TOCs must load the same Lua and declare the same SavedVariables, or one
 # client family silently collects into a different table.
-for candidate in "$toc" "$mainline_toc"; do
+for candidate in "$toc" "$mainline_toc" "$forever_toc"; do
     grep -q '^## SavedVariables: WoWCoachCollectorDB$' "$candidate"
     grep -qx 'WoWCoachCollector.lua' "$candidate"
 done
