@@ -1438,11 +1438,15 @@ end
 -- A character last captured under its old realm name, now to be filed under
 -- the ruleset. Moving the record keeps what only a window can refresh --
 -- recipes and the bank -- instead of starting the character from nothing.
-local function adoptRenamedRecord(characters, key, flavor, realm, name, guid, raceID, classID)
+--
+-- Also carries a record filed under the first name alone (2e44afc, before the
+-- surname joined the key) to the full-name key.
+local function adoptRenamedRecord(characters, key, flavor, realm, name, firstName, guid, raceID, classID)
     for oldKey, old in pairs(characters) do
-        if oldKey ~= key and type(old) == "table" and old.name == name
-            and old.gameFlavor == flavor and old.realm ~= realm
-            and rulesetOfRealmName(old.realm) == realm
+        if oldKey ~= key and type(old) == "table"
+            and (old.name == name or old.name == firstName)
+            and old.gameFlavor == flavor
+            and (old.realm == realm or rulesetOfRealmName(old.realm) == realm)
             and sameCharacter(old, guid, raceID, classID) then
             characters[oldKey] = nil
             characters[key] = old
@@ -1453,7 +1457,9 @@ local function adoptRenamedRecord(characters, key, flavor, realm, name, guid, ra
 end
 
 local function currentRecord()
-    local name = UnitName and UnitName("player")
+    local name, surname
+    if UnitName then name, surname = UnitName("player") end
+    local firstName = name
     local realm = GetRealmName and GetRealmName()
     local realmFromRuleset = false
     if not realm or realm == "" then
@@ -1461,6 +1467,13 @@ local function currentRecord()
         realmFromRuleset = realm ~= nil
     end
     if not name or name == "" or not realm or realm == "" then return nil end
+    -- Without realms, a first name is not unique even on one account: Coffer
+    -- Dawnhollow (Alliance) and Coffer Duskhollow (Horde) share the Normal
+    -- ruleset and would overwrite each other. Forever's names are first name
+    -- plus surname, so the key carries both when the client gives a surname.
+    if realmFromRuleset and type(surname) == "string" and surname ~= "" then
+        name = name .. " " .. surname
+    end
 
     local interface = interfaceVersion()
     local flavor = gameFlavor(interface, has("C_SkillInfo"))
@@ -1474,7 +1487,7 @@ local function currentRecord()
     local guid, raceID, classID = playerIdentity()
     if not record and realmFromRuleset then
         record = adoptRenamedRecord(WoWCoachCollectorDB.characters, key, flavor, realm,
-            name, guid, raceID, classID)
+            name, firstName, guid, raceID, classID)
     end
     if record and not sameCharacter(record, guid, raceID, classID) then
         -- A different character under a reused name. Start clean rather than

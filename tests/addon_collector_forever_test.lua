@@ -33,7 +33,7 @@ WOW_PROJECT_CLASSIC = 2
 function UnitName(unit)
     if unit == "pet" then return world.petName end
     assert(unit == "player")
-    return world.name
+    return world.name, world.surname
 end
 function UnitExists(unit) return unit == "pet" and world.petName ~= nil or false end
 function GetRealmName() return world.realm end
@@ -884,6 +884,30 @@ do
     collector.captureVitals()
     check(WoWCoachCollectorDB.characters[collector.characterKey("forever", "RPPvP", world.name)] ~= nil,
         "PvP plus RP should be filed as RPPvP")
+
+    world.pvp, world.rp = false, false
+
+    -- Surnames: two characters with one first name on one ruleset must not
+    -- share a record. Coffer Dawnhollow and Coffer Duskhollow, live.
+    world.surname, world.guid = "Dawnhollow", "Player-1-A"
+    local firstOnly = collector.characterKey("forever", "PvE", world.name)
+    local dawnKey = collector.characterKey("forever", "PvE", world.name .. " Dawnhollow")
+    local duskKey = collector.characterKey("forever", "PvE", world.name .. " Duskhollow")
+    WoWCoachCollectorDB = { schemaVersion = 3, characters = {
+        [firstOnly] = { name = world.name, realm = "PvE", gameFlavor = "forever",
+                        guid = "Player-1-A", raceID = 8, classID = 8, recipes = { Tailoring = {} } },
+    } }
+    collector.capture()
+    chars = WoWCoachCollectorDB.characters
+    check(chars[dawnKey] ~= nil and chars[firstOnly] == nil,
+        "a first-name-only record should move to the full-name key")
+    check(chars[dawnKey] and chars[dawnKey].recipes and chars[dawnKey].recipes.Tailoring ~= nil,
+        "and keep its caches")
+    world.surname, world.guid = "Duskhollow", "Player-1-B"
+    collector.capture()
+    check(chars[duskKey] ~= nil and chars[dawnKey] ~= nil and chars[dawnKey].guid == "Player-1-A",
+        "a second character with the same first name gets its own record")
+    world.surname = nil
 
     WoWCoachCollectorDB, world.realm, world.guid = savedDB, savedRealm, savedGuid
     world.pvp, world.rp = savedPvp, savedRp
