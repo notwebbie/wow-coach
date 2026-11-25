@@ -197,6 +197,15 @@ WoWCoachCollectorDB = {
 				{
 					["header"] = "Durotar",
 					["level"] = 4,
+					["objectives"] = {
+						{
+							["done"] = false,
+							["have"] = 0,
+							["need"] = 1,
+							["text"] = "Sarkoth's Mangled Claw: 0/1",
+							["type"] = "item",
+						},
+					},
 					["questID"] = 795,
 					["state"] = "failed",
 					["title"] = "Sarkoth",

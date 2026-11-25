@@ -15,6 +15,7 @@ fn quest(title: &str, level: u16, zone: &str, state: QuestState) -> Quest {
         level: Some(level),
         header: Some(zone.to_string()),
         state: Some(state),
+        objectives: None,
     }
 }
 

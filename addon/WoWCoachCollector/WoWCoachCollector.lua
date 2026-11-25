@@ -978,6 +978,28 @@ end
 -- entirely separate rather than share a loop.
 --------------------------------------------------------------------------------
 
+-- Objective progress for one quest: "Tender Crocolisk Meat: 2/5" as numbers.
+-- The log title alone says a quest is open, not how far along it is, and a
+-- planner cannot price the shortfall of an item quest without the count.
+-- Kept to the five fields that mean something on every objective type.
+local function questObjectives(questID)
+    if not questID or not has("C_QuestLog.GetQuestObjectives") then return nil end
+    local ok, list = pcall(C_QuestLog.GetQuestObjectives, questID)
+    if not ok or type(list) ~= "table" or #list == 0 then return nil end
+    local objectives = {}
+    for _, objective in ipairs(list) do
+        if type(objective) == "table" then
+            objectives[#objectives + 1] = {
+                text = objective.text, type = objective.type,
+                have = objective.numFulfilled, need = objective.numRequired,
+                done = objective.finished and true or false,
+            }
+        end
+    end
+    if #objectives == 0 then return nil end
+    return objectives
+end
+
 local function captureQuestsFromQuestLog()
     if not has("C_QuestLog.GetNumQuestLogEntries") or not has("C_QuestLog.GetInfo") then
         return nil, nil
@@ -1004,6 +1026,7 @@ local function captureQuestsFromQuestLog()
                 quests[#quests + 1] = {
                     questID = info.questID, title = info.title, level = info.level,
                     header = header, state = state,
+                    objectives = questObjectives(info.questID),
                 }
             end
         end

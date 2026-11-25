@@ -310,10 +310,19 @@ kept so a reader can redo the grouping without an addon update.
         ["level"] = 62,
         ["header"] = "Hellfire Peninsula",
         ["state"] = "complete",
+        ["objectives"] = {                         -- optional
+            { ["text"] = "Tender Crocolisk Meat: 2/5", ["type"] = "item",
+              ["have"] = 2, ["need"] = 5, ["done"] = false },
+        },
     }, ...
 },
 ["questsComplete"] = true,
 ```
+
+`objectives` comes from `C_QuestLog.GetQuestObjectives(questID)`: `have` and
+`need` are `numFulfilled` and `numRequired`, `type` is the client's own
+(`item`, `monster`, `object`, `event`, ...). Absent when the client has no such
+API or the quest has no objectives — absence never means "nothing to do".
 
 `state` is `active`, `complete`, or `failed`. The underlying API returns a
 signed number rather than a boolean; the sign is interpreted here because that

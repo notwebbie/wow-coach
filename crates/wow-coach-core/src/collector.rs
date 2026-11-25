@@ -514,6 +514,22 @@ pub struct Quest {
     pub level: Option<u16>,
     pub header: Option<String>,
     pub state: Option<QuestState>,
+    /// Objective progress. Absent on clients without `GetQuestObjectives` and
+    /// in captures taken before it was collected.
+    #[serde(deserialize_with = "empty_table_as_list")]
+    pub objectives: Option<Vec<QuestObjective>>,
+}
+
+/// One quest objective as the client reports it: "Tender Crocolisk Meat: 2/5".
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct QuestObjective {
+    pub text: Option<String>,
+    #[serde(rename = "type")]
+    pub kind: Option<String>,
+    pub have: Option<u32>,
+    pub need: Option<u32>,
+    pub done: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]

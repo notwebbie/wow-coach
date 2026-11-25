@@ -99,6 +99,16 @@ function C_QuestLog.GetInfo(index)
     return { title = "Sarkoth", isHeader = false, questID = 795, level = 4 }
 end
 function C_QuestLog.IsComplete(questID) return questID == 788 end
+-- Objective progress, keyed by questID like completion. Sarkoth has one item
+-- objective part done; Cutting Teeth returns an empty list, which must not be
+-- stored as an empty table.
+function C_QuestLog.GetQuestObjectives(questID)
+    if questID == 795 then
+        return { { text = "Sarkoth's Mangled Claw: 0/1", type = "item", finished = false,
+                   numFulfilled = 0, numRequired = 1 } }
+    end
+    return {}
+end
 function C_QuestLog.IsFailed(questID) return questID == 795 end
 
 -- Talents: one trait tree with three groups standing in for the vanilla tabs.
@@ -369,6 +379,11 @@ check(snap.quests and snap.quests[1].header == "Durotar", "header tracked")
 check(snap.quests and snap.quests[1].state == "complete", "IsComplete must be called with questID")
 check(snap.quests and snap.quests[2].state == "failed", "IsFailed must be called with questID")
 check(snap.quests and snap.quests[1].difficulty == nil, "collector must not derive difficulty")
+local sarkoth = snap.quests and snap.quests[2]
+local objective = sarkoth and sarkoth.objectives and sarkoth.objectives[1]
+check(objective and objective.need == 1 and objective.have == 0 and objective.type == "item"
+    and objective.done == false, "objective progress captured as numbers")
+check(snap.quests and snap.quests[1].objectives == nil, "an empty objective list is not stored")
 
 -- Talents via traits.
 check(snap.talents and #snap.talents.trees == 3, "three trait groups captured")
