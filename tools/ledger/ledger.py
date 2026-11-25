@@ -378,7 +378,9 @@ def main():
             for o in cobj:
                 h, n = o.get("have") or 0, o.get("need") or 0
                 obj_have += min(h, n); obj_need += n
-                label = (o.get("text") or "").split(":")[0].strip()
+                # Forever writes "0/4 Kobold Digger slain"; Classic "Kobold Digger: 0/4".
+                label = re.sub(r"^\d+/\d+\s*", "", (o.get("text") or "")).split(":")[0].strip()
+                label = re.sub(r"\s+slain$", "", label)
                 extra = ""
                 if o.get("type") == "item" and h < n:
                     iid = qitems.get(label.lower())
