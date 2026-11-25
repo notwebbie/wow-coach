@@ -470,6 +470,32 @@ def main():
         w("")
         prof_rows.append({"profession": name, "rank": rank, "max": mx, "best": cands[:3]})
 
+    # ---- recipe items carried but not learned
+    known = {r.get("name") for b in (rec.get("recipes") or {}).values() for r in b.get("recipes") or []}
+    prof_of = {"Recipe": "Cooking", "Formula": "Enchanting", "Pattern": "Tailoring/Leatherworking",
+               "Schematic": "Engineering", "Plans": "Blacksmithing", "Manual": "First Aid"}
+    ranks = {p.get("name"): p.get("rank") for p in rec.get("professions") or []}
+    carried = []
+    for iid, cnt in have.items():
+        nm = bag_names.get(iid) or ""
+        m = re.match(r"(Recipe|Formula|Pattern|Schematic|Plans|Manual): (.+)$", nm)
+        if not m: continue
+        teaches = m.group(2)
+        prof = prof_of[m.group(1)]
+        rank = next((ranks[x] for x in prof.split("/") if x in ranks), None)
+        status = "already known" if teaches in known else ("no such profession" if rank is None else "not learned")
+        carried.append((nm, prof, rank, status, ah_price(auc, iid)))
+    if carried:
+        w("## Recipes in bags")
+        w("")
+        w("_The required skill isn't in the local data: look it up (Wowhead/Metaforge Forever) before advising._")
+        w("")
+        w("| Item | Profession (your skill) | Status | AH value |")
+        w("|---|---|---|---|")
+        for nm, prof, rank, status, price in sorted(carried):
+            w(f"| {nm} | {prof} ({rank if rank is not None else '—'}) | {status} | {money(price)} |")
+        w("")
+
     # ---- grimoires (warlocks)
     grim_due = []
     if (rec.get("class") or "").upper() == "WARLOCK":
