@@ -252,6 +252,56 @@ def as_ids(x):
     return []
 
 
+# ---------------------------------------------------------------- grimoires
+DEMON_FAMILY = {
+    "Blood Pact": "Imp", "Firebolt": "Imp", "Phase Shift": "Imp", "Fire Shield": "Imp",
+    "Torment": "Voidwalker", "Sacrifice": "Voidwalker", "Consume Shadows": "Voidwalker",
+    "Suffering": "Voidwalker",
+    "Lash of Pain": "Succubus", "Soothing Kiss": "Succubus", "Seduction": "Succubus",
+    "Lesser Invisibility": "Succubus",
+    "Devour Magic": "Felhunter", "Tainted Blood": "Felhunter", "Spell Lock": "Felhunter",
+    "Paranoia": "Felhunter",
+}
+# The level each demon becomes available (class quests).
+DEMON_LEVEL = {"Imp": 1, "Voidwalker": 10, "Succubus": 20, "Felhunter": 30}
+
+
+def grimoire_catalogue(toc):
+    """All 'Grimoire of <ability> (Rank N)' items in QuestieDB: id, ability, rank, level, vendors."""
+    if not toc: return []
+    out = []
+    pat = re.compile(r"^## X-Item-(\d+)-S: (.*)$")
+    with open(toc, "r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            if not line.startswith("## X-Item-"): continue
+            m = pat.match(line.rstrip("\n"))
+            if not m or m.group(2).startswith("~"): continue
+            try: row = Cbor(base64.b64decode(m.group(2))).read()
+            except Exception: continue
+            name = row.get(1) if isinstance(row, dict) else None
+            if not (isinstance(name, str) and name.startswith("Grimoire of ")): continue
+            mm = re.match(r"Grimoire of (.+?)(?: \(Rank (\d+)\))?$", name)
+            ability, rank = mm.group(1), int(mm.group(2)) if mm.group(2) else None
+            family = DEMON_FAMILY.get(ability)
+            if not family: continue  # warlock tomes and quest grimoires, not demon training
+            out.append({"id": int(m.group(1)), "name": name, "ability": ability, "rank": rank,
+                        "family": family, "level": row.get(10) or 0})
+    out.sort(key=lambda g: (g["level"], g["name"]))
+    return out
+
+
+def known_pet_rank(pet_spells, family, ability):
+    """Highest known rank of an ability, 0 if absent, None if that family was never captured."""
+    fam = (pet_spells or {}).get(family)
+    if not fam: return None
+    best = 0
+    for sp in fam.get("spells") or []:
+        if sp.get("name") == ability:
+            m = re.search(r"(\d+)", sp.get("rank") or "")
+            best = max(best, int(m.group(1)) if m else 1)
+    return best
+
+
 # ---------------------------------------------------------------- main report
 def main():
     ap = argparse.ArgumentParser()
@@ -418,6 +468,53 @@ def main():
         w("")
         prof_rows.append({"profession": name, "rank": rank, "max": mx, "best": cands[:3]})
 
+    # ---- grimoires (warlocks)
+    grim_due = []
+    if (rec.get("class") or "").upper() == "WARLOCK":
+        cat = grimoire_catalogue(toc)
+        ps = rec.get("petSpells") or {}
+        w("## Grimoires")
+        w("")
+        if not ps:
+            w("_No demon spellbook captured yet. Summon each demon you have (Imp, Voidwalker, ...) "
+              "once and `/reload` — the collector records what each one knows._")
+            w("")
+        due, soon, unknown_fams = [], [], set()
+        for g in cat:
+            if DEMON_LEVEL.get(g["family"], 99) > (clvl or 0): continue
+            have_rank = known_pet_rank(ps, g["family"], g["ability"])
+            need_rank = g["rank"] or 1
+            if have_rank is None:
+                unknown_fams.add(g["family"])
+                status = "unknown"
+            elif have_rank >= need_rank:
+                continue
+            else:
+                status = "not learned"
+            price, src = buy_price(auc, g["id"])
+            entry = dict(g, status=status, price=price)
+            if g["level"] <= (clvl or 0): due.append(entry)
+            elif g["level"] <= (clvl or 0) + 4: soon.append(entry)
+        if due:
+            w("**Available now and not learned — buy from your demon trainer:**")
+            w("")
+            w("| Grimoire | Demon | Level | Status | Price |")
+            w("|---|---|---|---|---|")
+            for g in due:
+                w(f"| {g['name']} | {g['family']} | {g['level']} | {g['status']} | {money(g['price']) if g['price'] else 'trainer price'} |")
+            w("")
+        else:
+            w("Every grimoire available at your level is learned.")
+            w("")
+        if soon:
+            w("Coming up: " + "; ".join(f"{g['name']} at {g['level']}" for g in soon))
+            w("")
+        if unknown_fams:
+            w(f"_Status 'unknown': no spellbook captured yet for {', '.join(sorted(unknown_fams))} — "
+              "summon it once and `/reload`._")
+            w("")
+        grim_due = [g["name"] for g in due if g["status"] == "not learned"]
+
     # ---- bag value
     w("## Bags — what is worth selling")
     w("")
@@ -447,6 +544,7 @@ def main():
         "objectives_have": obj_have, "objectives_need": obj_need,
         "shortfall_cost": int(total_short_cost),
         "professions": {p["name"]: p["rank"] for p in prof_summary},
+        "grimoires_due": grim_due,
     }
     hist_dir = a.history
     os.makedirs(hist_dir, exist_ok=True)

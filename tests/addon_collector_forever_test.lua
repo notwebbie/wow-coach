@@ -606,6 +606,41 @@ check(pet and pet.name == "Snarlfang", "pet name captured")
 check(pet and pet.happiness == 3, "pet happiness captured")
 check(pet and pet.trainingPointsSpent == 40, "training points captured")
 
+-- Pet spellbook, keyed by family: the record of learned grimoires. An empty
+-- subName is no rank, not a rank called "".
+function UnitCreatureFamily(unit) return unit == "pet" and world.petFamily or nil end
+world.petFamily = "Voidwalker"
+Enum.SpellBookSpellBank = { Player = 0, Pet = 1 }
+C_SpellBook = C_SpellBook or {}
+C_SpellBook.HasPetSpells = function() return 3, "DEMON" end
+C_SpellBook.GetSpellBookItemInfo = function(index, bank)
+    assert(bank == 1, "pet spells must be read from the pet bank")
+    local book = {
+        { name = "Torment", subName = "Rank 2", spellID = 7809 },
+        { name = "Sacrifice", subName = "Rank 1", spellID = 7812 },
+        { name = "Suffering", subName = "", spellID = 17735 },
+    }
+    return book[index]
+end
+frame:Fire("PET_BAR_UPDATE")
+frame:Tick(10)
+local void = record().petSpells and record().petSpells.Voidwalker
+check(void and #void.spells == 3, "pet spellbook captured by family")
+check(void and void.spells[1].name == "Torment" and void.spells[1].rank == "Rank 2",
+    "pet spell name and rank captured")
+check(void and void.spells[3].rank == nil, "an empty subName is stored as no rank")
+world.petFamily = "Imp"
+C_SpellBook.HasPetSpells = function() return 1, "DEMON" end
+C_SpellBook.GetSpellBookItemInfo = function(index) return { name = "Firebolt", subName = "Rank 2" } end
+frame:Fire("UNIT_PET")
+frame:Tick(10)
+local families = record().petSpells or {}
+check(families.Voidwalker ~= nil and families.Imp ~= nil,
+    "summoning another demon keeps the first family's record")
+world.petFamily = nil
+C_SpellBook.HasPetSpells = nil
+C_SpellBook.GetSpellBookItemInfo = nil
+
 -- The live beta showed these return NO values with no pet out, not nil.
 world.petName = nil
 C_PetInfo.GetPetHappiness = function() return end

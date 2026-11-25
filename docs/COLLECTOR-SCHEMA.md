@@ -332,6 +332,26 @@ quest level against character level and belongs to the core.
 `questsComplete` is `false` when a collapsed header hid quests from
 enumeration, on the same principle as `skillsComplete`.
 
+### Pet spellbook
+
+```lua
+["petSpells"] = {
+    ["Voidwalker"] = {
+        ["capturedAt"] = 1795400000,
+        ["spells"] = {
+            { ["name"] = "Torment", ["rank"] = "Rank 2", ["spellID"] = 7809 },
+            { ["name"] = "Sacrifice", ["rank"] = "Rank 1", ["spellID"] = 7812 },
+        },
+    },
+    ["Imp"] = { ... },
+},
+```
+
+Keyed by `UnitCreatureFamily("pet")`. Read from the pet spellbook only while
+that pet is out, so each family keeps its last capture until that family is
+summoned again. For a warlock this is the record of learned grimoires.
+`rank` is the client's subName, absent when it is empty.
+
 ### Ruleset
 
 ```lua

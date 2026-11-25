@@ -1149,6 +1149,47 @@ local function capturePet()
     }
 end
 
+-- What the summoned pet knows, by creature family. For a warlock this is the
+-- record of which grimoires have been learned: a grimoire teaches the demon
+-- type, not one demon, and the only place that shows is the pet spellbook while
+-- that demon is out. Each family is kept until that family is summoned again,
+-- so the record builds up as the warlock cycles demons.
+local function capturePetSpells()
+    if UnitExists and not UnitExists("pet") then return nil end
+    local family = UnitCreatureFamily and UnitCreatureFamily("pet")
+    if type(family) ~= "string" or family == "" then return nil end
+    local count
+    if has("C_SpellBook.HasPetSpells") then
+        local ok, n = pcall(C_SpellBook.HasPetSpells)
+        if ok then count = n end
+    elseif HasPetSpells then
+        local ok, n = pcall(HasPetSpells)
+        if ok then count = n end
+    end
+    if type(count) ~= "number" or count <= 0 then return nil end
+    local bank = Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Pet
+    local modern = bank ~= nil and has("C_SpellBook.GetSpellBookItemInfo")
+    local spells = {}
+    for index = 1, count do
+        local name, rank, spellID
+        if modern then
+            local ok, info = pcall(C_SpellBook.GetSpellBookItemInfo, index, bank)
+            if ok and type(info) == "table" then
+                name, rank, spellID = info.name, info.subName, info.spellID
+            end
+        elseif GetSpellBookItemName then
+            local ok, n, r = pcall(GetSpellBookItemName, index, "pet")
+            if ok then name, rank = n, r end
+        end
+        if type(name) == "string" and name ~= "" then
+            if rank == "" then rank = nil end
+            spells[#spells + 1] = { name = name, rank = rank, spellID = spellID }
+        end
+    end
+    if #spells == 0 then return nil end
+    return family, spells
+end
+
 --------------------------------------------------------------------------------
 -- Recipes
 --
@@ -1683,6 +1724,12 @@ function collector.capture()
 
     local pet = capturePet()
     if pet then record.pet = pet end
+
+    local family, petSpells = capturePetSpells()
+    if family then
+        record.petSpells = record.petSpells or {}
+        record.petSpells[family] = { spells = petSpells, capturedAt = time() }
+    end
 end
 
 -- Record what is in the bank, and only ever when the window is open.
@@ -1730,7 +1777,7 @@ local SNAPSHOT_EVENTS = {
     "QUEST_LOG_UPDATE", "BAG_UPDATE_DELAYED",
     "SKILL_LINES_CHANGED", "CHARACTER_POINTS_CHANGED", "TRAIT_CONFIG_UPDATED",
     "LEARNED_SPELL_IN_TAB", "SPELLS_CHANGED",
-    "GAME_RULES_CHANGED", "UNIT_PET", "UNIT_HAPPINESS",
+    "GAME_RULES_CHANGED", "UNIT_PET", "UNIT_HAPPINESS", "PET_BAR_UPDATE",
 }
 
 -- Events after which the vitals are written at once rather than behind the

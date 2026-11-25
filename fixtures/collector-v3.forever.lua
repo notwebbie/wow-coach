@@ -151,6 +151,36 @@ WoWCoachCollectorDB = {
 				["trainingPointsSpent"] = 40,
 				["trainingPointsTotal"] = 100,
 			},
+			["petSpells"] = {
+				["Imp"] = {
+					["capturedAt"] = 1700000000,
+					["spells"] = {
+						{
+							["name"] = "Firebolt",
+							["rank"] = "Rank 2",
+						},
+					},
+				},
+				["Voidwalker"] = {
+					["capturedAt"] = 1700000000,
+					["spells"] = {
+						{
+							["name"] = "Torment",
+							["rank"] = "Rank 2",
+							["spellID"] = 7809,
+						},
+						{
+							["name"] = "Sacrifice",
+							["rank"] = "Rank 1",
+							["spellID"] = 7812,
+						},
+						{
+							["name"] = "Suffering",
+							["spellID"] = 17735,
+						},
+					},
+				},
+			},
 			["professions"] = {
 				{
 					["index"] = 6,
