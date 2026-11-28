@@ -318,7 +318,13 @@ def main():
     key, rec = pick_character(db, a.char)
     clvl = rec.get("level")
     realm, faction = rec.get("realm") or "", rec.get("faction") or ""
-    auc = load_auctionator(sv, [f"{realm} {faction}", realm, f"{realm} {faction}".strip()])
+    # Auctionator keys Forever by ruleset (PvE/PvP/RP/RPPvP/HC), with the faction
+    # only on some keys. Records written before realms vanished carry the old
+    # realm name, so derive the label from the ruleset flags too.
+    rs = rec.get("ruleset") or {}
+    label = ("RPPvP" if rs.get("pvp") and rs.get("rp") else "PvP" if rs.get("pvp")
+             else "RP" if rs.get("rp") else "HC" if rs.get("hardcore") else "PvE") if rs else realm
+    auc = load_auctionator(sv, [f"{realm} {faction}", realm, f"{label} {faction}", label])
     toc = load_questie(os.path.join(root, "Interface", "AddOns"))
     have, bag_names = bag_counts(rec)
     L = []
